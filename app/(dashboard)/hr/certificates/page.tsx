@@ -17,7 +17,7 @@ interface CertRow {
 }
 
 const mockCerts: CertRow[] = [
-  { id: '1', studentName: 'John Doe', role: 'Frontend Web Development Intern', mentorName: 'Dr. Rajesh Kumar', issueDate: '2026-08-04', status: 'ready' },
+  { id: '1', studentName: 'Thiru', role: 'Frontend Web Development Intern', mentorName: 'Mr. Vijay', issueDate: '2026-08-04', status: 'ready' },
   { id: '2', studentName: 'Priya Sharma', role: 'Full Stack Engineering Intern', mentorName: 'Ananya Deshmukh', issueDate: '2026-07-30', status: 'issued' },
 ];
 

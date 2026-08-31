@@ -24,7 +24,7 @@ export default function MentorDashboardPage() {
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white mb-2 backdrop-blur">
             <Sparkles className="h-3.5 w-3.5" /> Industrial Mentor Portal
           </span>
-          <h1 className="text-2xl font-bold tracking-tight">Welcome, Dr. Rajesh Kumar</h1>
+          <h1 style={{color:"white"}} className="text-2xl font-bold tracking-tight">Welcome, Mr. Vijay</h1>
           <p className="text-green-100 text-sm mt-1 max-w-xl">
             Review AI task suggestions, manage assigned student submissions, leave feedback, and grade final evaluations.
           </p>
@@ -112,7 +112,7 @@ export default function MentorDashboardPage() {
           </CardHeader>
           <CardContent className="divide-y divide-slate-100">
             {[
-              { name: 'John Doe', role: 'Frontend Intern', progress: '12/15 Tasks', status: 'On Track' },
+              { name: 'Thiru', role: 'Frontend Intern', progress: '12/15 Tasks', status: 'On Track' },
               { name: 'Priya Sharma', role: 'Full Stack Intern', progress: '14/16 Tasks', status: 'Ahead' },
               { name: 'Rahul Verma', role: 'UI/UX Intern', progress: '9/15 Tasks', status: 'Needs Support' },
             ].map((m, i) => (

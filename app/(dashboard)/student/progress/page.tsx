@@ -12,7 +12,7 @@ const steps: TimelineStep[] = [
   { id: '2', title: 'AI Resume Analysis & Skill Extraction', description: 'Resume uploaded and processed by AI engine', date: '2026-07-02', status: 'completed' },
   { id: '3', title: 'Internship Application & Candidate Matching', description: 'Applied for Frontend Development Intern position', date: '2026-07-05', status: 'completed' },
   { id: '4', title: 'HR Shortlisting & Selection', description: 'Shortlisted by TechCorp India HR team', date: '2026-07-10', status: 'completed' },
-  { id: '5', title: 'Industrial Mentor Assignment', description: 'Assigned to Dr. Rajesh Kumar (Principal Architect)', date: '2026-07-15', status: 'completed' },
+  { id: '5', title: 'Industrial Mentor Assignment', description: 'Assigned to Mr. Vijay (Principal Architect)', date: '2026-07-15', status: 'completed' },
   { id: '6', title: 'Weekly Internship Tasks Execution', description: 'Completed 12 out of 15 assigned deliverables', date: 'In Progress', status: 'current' },
   { id: '7', title: 'Final Evaluation & HR Confirmation', description: 'Final mentor review and performance grading', status: 'upcoming' },
   { id: '8', title: 'Certificate Generation & Issuance', description: 'Verified certificate generation and download', status: 'upcoming' },

@@ -16,9 +16,9 @@ interface MentorTaskRow {
 }
 
 const mockTasks: MentorTaskRow[] = [
-  { id: '1', week: 1, title: 'Environment Setup & Codebase Onboarding', assignedStudent: 'John Doe', dueDate: '2026-08-05', status: 'completed' },
-  { id: '2', week: 2, title: 'Component Development & UI Integration', assignedStudent: 'John Doe', dueDate: '2026-08-12', status: 'completed' },
-  { id: '3', week: 3, title: 'API Integration & State Management', assignedStudent: 'John Doe', dueDate: '2026-08-19', status: 'published' },
+  { id: '1', week: 1, title: 'Environment Setup & Codebase Onboarding', assignedStudent: 'Thiru', dueDate: '2026-08-05', status: 'completed' },
+  { id: '2', week: 2, title: 'Component Development & UI Integration', assignedStudent: 'Thiru', dueDate: '2026-08-12', status: 'completed' },
+  { id: '3', week: 3, title: 'API Integration & State Management', assignedStudent: 'Thiru', dueDate: '2026-08-19', status: 'published' },
 ];
 
 export default function MentorTasksPage() {

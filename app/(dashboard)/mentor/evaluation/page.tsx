@@ -27,7 +27,7 @@ export default function MentorEvaluationPage() {
             <Select defaultValue="john">
               <SelectTrigger><SelectValue placeholder="Choose student" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="john">John Doe (Frontend Web Development Intern)</SelectItem>
+                <SelectItem value="john">Thiru (Frontend Web Development Intern)</SelectItem>
               </SelectContent>
             </Select>
           </div>

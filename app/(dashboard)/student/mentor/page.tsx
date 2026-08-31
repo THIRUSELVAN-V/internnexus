@@ -26,7 +26,7 @@ export default function StudentMentorPage() {
               </Avatar>
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Dr. Rajesh Kumar</h2>
+              <h2 className="text-base font-bold text-slate-900">Mr. Vijay</h2>
               <p className="text-xs text-slate-500">Principal Software Architect</p>
               <Badge variant="purple" className="mt-2 text-xs">TechCorp India</Badge>
             </div>
@@ -64,7 +64,7 @@ export default function StudentMentorPage() {
               <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-xs text-slate-700 leading-relaxed">
                 <p className="font-semibold text-slate-900 mb-1">Week 2 Submission Evaluation:</p>
                 &quot;Excellent work on the responsive dashboard component setup. Clean prop types and good test coverage. Focus next week on async state error boundaries.&quot;
-                <p className="text-[11px] text-slate-400 mt-2 font-mono">— Dr. Rajesh Kumar · 3 days ago</p>
+                <p className="text-[11px] text-slate-400 mt-2 font-mono">— Mr. Vijay · 3 days ago</p>
               </div>
             </CardContent>
           </Card>

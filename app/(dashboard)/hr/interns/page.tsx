@@ -17,7 +17,7 @@ interface ActiveInternRow {
 }
 
 const mockInterns: ActiveInternRow[] = [
-  { id: '1', name: 'John Doe', role: 'Frontend Web Development Intern', mentorName: 'Dr. Rajesh Kumar', startDate: '2026-07-15', progress: 75, tasksCompleted: '12 / 15' },
+  { id: '1', name: 'Thiru', role: 'Frontend Web Development Intern', mentorName: 'Mr. Vijay', startDate: '2026-07-15', progress: 75, tasksCompleted: '12 / 15' },
   { id: '2', name: 'Priya Sharma', role: 'Full Stack Engineering Intern', mentorName: 'Ananya Deshmukh', startDate: '2026-07-01', progress: 85, tasksCompleted: '14 / 16' },
   { id: '3', name: 'Rahul Verma', role: 'UI/UX Design & Frontend Intern', mentorName: 'Vikram Mehta', startDate: '2026-07-10', progress: 60, tasksCompleted: '9 / 15' },
 ];

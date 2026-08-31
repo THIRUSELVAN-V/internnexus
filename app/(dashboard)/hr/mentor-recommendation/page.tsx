@@ -11,7 +11,7 @@ import type { MentorRecommendation } from '@/lib/types';
 const mockRecs: MentorRecommendation[] = [
   {
     mentorId: 'men-1',
-    mentorName: 'Dr. Rajesh Kumar',
+    mentorName: 'Mr. Vijay',
     designation: 'Principal Software Architect',
     expertise: ['Web Development', 'React', 'Cloud Architecture'],
     matchScore: 95,
@@ -49,7 +49,7 @@ export default function HRMentorRecommendationPage() {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-purple-600 uppercase">Selected Intern</span>
-              <h3 className="text-base font-bold text-slate-900">John Doe</h3>
+              <h3 className="text-base font-bold text-slate-900">Thiru</h3>
               <p className="text-xs text-slate-500">Applied for Frontend Web Development Intern</p>
             </div>
             <Badge variant="purple" className="text-xs">94% AI Match Score</Badge>
@@ -64,7 +64,7 @@ export default function HRMentorRecommendationPage() {
               </div>
               <h2 className="text-lg font-bold text-slate-900">Mentor Assignment Confirmed!</h2>
               <p className="text-xs text-slate-600 max-w-sm mx-auto">
-                Dr. Rajesh Kumar has been successfully assigned to John Doe. Notification sent to both parties.
+                Mr. Vijay has been successfully assigned to Thiru. Notification sent to both parties.
               </p>
             </CardContent>
           </Card>

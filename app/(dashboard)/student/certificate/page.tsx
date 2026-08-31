@@ -34,16 +34,16 @@ export default function StudentCertificatePage() {
               <span className="text-xs font-semibold text-amber-700 uppercase tracking-widest">Certificate of Internship</span>
               <h2 className="text-2xl font-bold text-slate-900 font-serif">This is presented to</h2>
               <p className="text-3xl font-bold text-blue-600 font-serif underline decoration-amber-400 decoration-2">
-                John Doe
+                Thiru
               </p>
               <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
-                for successfully completing the 12-week <strong className="text-slate-900">Frontend Web Development Internship</strong> at <strong className="text-slate-900">TechCorp India</strong> under the mentorship of <strong className="text-slate-900">Dr. Rajesh Kumar</strong> with an overall rating of 5.0 / 5.0.
+                for successfully completing the 12-week <strong className="text-slate-900">Frontend Web Development Internship</strong> at <strong className="text-slate-900">TechCorp India</strong> under the mentorship of <strong className="text-slate-900">Mr. Vijay</strong> with an overall rating of 5.0 / 5.0.
               </p>
             </div>
 
             <div className="pt-8 border-t border-slate-200 flex justify-between items-end text-xs text-slate-500">
               <div className="text-left">
-                <p className="font-bold text-slate-900">Dr. Rajesh Kumar</p>
+                <p className="font-bold text-slate-900">Mr. Vijay</p>
                 <p className="text-[11px]">Industrial Mentor · TechCorp</p>
               </div>
               <div className="text-right">

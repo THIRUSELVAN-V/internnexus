@@ -15,9 +15,9 @@ interface UserRow {
 }
 
 const mockUsers: UserRow[] = [
-  { id: '1', name: 'John Doe', email: 'student@demo.com', role: 'student', createdAt: '2026-07-01' },
+  { id: '1', name: 'Thiru', email: 'student@demo.com', role: 'student', createdAt: '2026-07-01' },
   { id: '2', name: 'Priya Sharma', email: 'hr@demo.com', role: 'hr', createdAt: '2026-06-15' },
-  { id: '3', name: 'Dr. Rajesh Kumar', email: 'mentor@demo.com', role: 'mentor', createdAt: '2026-06-10' },
+  { id: '3', name: 'Mr. Vijay', email: 'mentor@demo.com', role: 'mentor', createdAt: '2026-06-10' },
   { id: '4', name: 'Admin User', email: 'admin@demo.com', role: 'admin', createdAt: '2026-05-01' },
 ];
 

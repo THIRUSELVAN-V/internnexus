@@ -135,7 +135,7 @@ export default function HRDashboardPage() {
         </CardHeader>
         <CardContent className="divide-y divide-slate-100">
           {[
-            { name: 'John Doe', role: 'Frontend Web Development Intern', score: 94, college: 'IIT Madras', status: 'ai_reviewed' },
+            { name: 'Thiru', role: 'Frontend Web Development Intern', score: 94, college: 'IIT Madras', status: 'ai_reviewed' },
             { name: 'Priya Sharma', role: 'Full Stack Engineering Intern', score: 88, college: 'BITS Pilani', status: 'hr_shortlisted' },
             { name: 'Rahul Verma', role: 'UI/UX Design & Frontend Intern', score: 84, college: 'NIT Trichy', status: 'ai_reviewed' },
           ].map((cand, i) => (

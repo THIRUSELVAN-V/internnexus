@@ -137,7 +137,7 @@ export default function RegisterPage() {
                   <div>
                     <Label htmlFor="displayName" required>Full Name</Label>
                     <div className="mt-1.5">
-                      <Input id="displayName" placeholder="John Doe" leftIcon={<UserIcon className="h-4 w-4" />}
+                      <Input id="displayName" placeholder="Thiru" leftIcon={<UserIcon className="h-4 w-4" />}
                         error={errors.displayName?.message} {...register('displayName')} />
                     </div>
                   </div>

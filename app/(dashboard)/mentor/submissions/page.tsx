@@ -40,7 +40,7 @@ export default function MentorSubmissionsPage() {
               <CardTitle className="text-base font-bold text-slate-900 mt-1">
                 Week 2: Component Development & UI Integration
               </CardTitle>
-              <p className="text-xs text-slate-500">Submitted by <strong className="text-slate-900">John Doe</strong> · 2 days ago</p>
+              <p className="text-xs text-slate-500">Submitted by <strong className="text-slate-900">Thiru</strong> · 2 days ago</p>
             </CardHeader>
             <CardContent className="space-y-3 pt-2">
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">

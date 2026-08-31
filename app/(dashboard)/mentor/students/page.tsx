@@ -20,7 +20,7 @@ interface StudentRow {
 }
 
 const mockMentees: StudentRow[] = [
-  { id: '1', name: 'John Doe', role: 'Frontend Web Development Intern', college: 'IIT Madras', tasksDone: '12 / 15', progress: 80, rating: 4.8 },
+  { id: '1', name: 'Thiru', role: 'Frontend Web Development Intern', college: 'IIT Madras', tasksDone: '12 / 15', progress: 80, rating: 4.8 },
   { id: '2', name: 'Priya Sharma', role: 'Full Stack Engineering Intern', college: 'BITS Pilani', tasksDone: '14 / 16', progress: 88, rating: 5.0 },
   { id: '3', name: 'Rahul Verma', role: 'UI/UX Design & Frontend Intern', college: 'NIT Trichy', tasksDone: '9 / 15', progress: 60, rating: 4.2 },
 ];
@@ -72,7 +72,7 @@ export default function MentorStudentsPage() {
           <Button size="sm" variant="outline" asChild>
             <Link href="/mentor/feedback"><MessageSquare className="h-3.5 w-3.5 mr-1" /> Leave Feedback</Link>
           </Button>
-          <Button size="sm" className="bg-green-600 hover:bg-green-700" asChild>
+          <Button style={{color:"white"}} size="sm" className="bg-green-600 hover:bg-green-700" asChild>
             <Link href="/mentor/evaluation">Final Evaluation</Link>
           </Button>
         </div>

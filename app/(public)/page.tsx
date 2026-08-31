@@ -496,7 +496,7 @@ export default function LandingPage() {
             />
             <TestimonialCard
               quote="The AI task generator is incredible. I edit the suggestions slightly and publish — it's saved me hours every week while keeping tasks structured."
-              author="Dr. Rajesh Kumar"
+              author="Mr. Vijay"
               role="Senior Mentor"
               company="Infosys"
               initials="RK"

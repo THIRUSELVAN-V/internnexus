@@ -33,8 +33,8 @@ export default function AdminDashboardPage() {
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white mb-2 backdrop-blur">
             <ShieldCheck className="h-3.5 w-3.5" /> System Administrator
           </span>
-          <h1 className="text-2xl font-bold tracking-tight">InternNexus Admin Control Panel</h1>
-          <p className="text-slate-300 text-sm mt-1 max-w-xl">
+          <h1 style={{color:"white"}} className="text-2xl font-bold tracking-tight">InternNexus Admin Control Panel</h1>
+          <p style={{color:"white"}} className="text-slate-300 text-sm mt-1 max-w-xl">
             Approve company registrations, manage global platform users, monitor analytics, and maintain system security.
           </p>
         </div>
@@ -144,7 +144,7 @@ export default function AdminDashboardPage() {
                 <p className="text-xs text-slate-500">{c.industry} · {c.size} · HR: {c.hr}</p>
               </div>
               <div className="flex items-center gap-2">
-                <Button size="sm" className="bg-green-600 hover:bg-green-700" asChild>
+                <Button size="sm" style={{color:"white"}} className="bg-green-600 hover:bg-green-700" asChild>
                   <Link href="/admin/approve-companies">Review & Approve</Link>
                 </Button>
               </div>

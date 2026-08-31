@@ -28,7 +28,7 @@ export default function MentorFeedbackPage() {
             <Select defaultValue="john">
               <SelectTrigger><SelectValue placeholder="Choose student" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="john">John Doe (Frontend Intern)</SelectItem>
+                <SelectItem value="john">Thiru (Frontend Intern)</SelectItem>
                 <SelectItem value="priya">Priya Sharma (Full Stack Intern)</SelectItem>
               </SelectContent>
             </Select>

@@ -9,7 +9,7 @@ export async function recommendMentors(
   return [
     {
       mentorId: 'men-1',
-      mentorName: 'Dr. Rajesh Kumar',
+      mentorName: 'Mr. Vijay',
       designation: 'Principal Software Architect',
       expertise: ['Web Development', 'React', 'Cloud Architecture', 'TypeScript'],
       matchScore: 95,

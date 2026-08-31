@@ -76,7 +76,7 @@ export default function StudentTasksPage() {
                   <span className="text-xs text-slate-400 font-mono flex items-center gap-1">
                     <Clock className="h-3.5 w-3.5" /> Due {task.dueDate}
                   </span>
-                  <Button asChild size="sm" variant={isInProgress ? 'default' : 'outline'}>
+                  <Button style={{color: isInProgress ? "white" : ""}} asChild size="sm" variant={isInProgress ? 'default' : 'outline'}>
                     <Link href="/student/submissions">
                       {isApproved ? 'View Submission' : 'Upload Submission'} <ArrowRight className="h-3.5 w-3.5 ml-1" />
                     </Link>

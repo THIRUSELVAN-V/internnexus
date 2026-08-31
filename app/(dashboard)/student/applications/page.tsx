@@ -26,7 +26,7 @@ const mockApplications: ApplicationRow[] = [
     appliedDate: '2026-08-01',
     status: 'mentor_assigned',
     matchScore: 94,
-    mentorName: 'Dr. Rajesh Kumar',
+    mentorName: 'Mr. Vijay',
   },
   {
     id: 'app-2',

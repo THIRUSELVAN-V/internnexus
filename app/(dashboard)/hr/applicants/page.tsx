@@ -19,7 +19,7 @@ interface ApplicantRow {
 }
 
 const mockApplicants: ApplicantRow[] = [
-  { id: '1', name: 'John Doe', role: 'Frontend Web Development Intern', college: 'IIT Madras', score: 94, status: 'ai_reviewed', appliedAt: '2026-08-01' },
+  { id: '1', name: 'Thiru', role: 'Frontend Web Development Intern', college: 'IIT Madras', score: 94, status: 'ai_reviewed', appliedAt: '2026-08-01' },
   { id: '2', name: 'Priya Sharma', role: 'Full Stack Engineering Intern', college: 'BITS Pilani', score: 88, status: 'hr_shortlisted', appliedAt: '2026-07-28' },
   { id: '3', name: 'Rahul Verma', role: 'UI/UX Design & Frontend Intern', college: 'NIT Trichy', score: 84, status: 'ai_reviewed', appliedAt: '2026-07-27' },
   { id: '4', name: 'Ananya Deshmukh', role: 'Frontend Web Development Intern', college: 'IIT Bombay', score: 91, status: 'mentor_assigned', appliedAt: '2026-07-25' },
@@ -72,7 +72,7 @@ export default function HRApplicantsPage() {
           </Button>
           <Button size="sm" className="bg-purple-600 hover:bg-purple-700" asChild>
             <Link href={`/hr/mentor-recommendation?applicantId=${item.id}`}>
-              <UserCheck className="h-3.5 w-3.5 mr-1" /> Assign Mentor
+              <p style={{ color: 'white' }}>Assign Mentor</p>
             </Link>
           </Button>
         </div>

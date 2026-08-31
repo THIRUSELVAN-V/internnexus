@@ -155,7 +155,7 @@ export default function StudentDashboardPage() {
           <Card className="border-indigo-100 bg-gradient-to-b from-white to-indigo-50/30">
             <CardHeader className="pb-2">
               <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">Assigned Industrial Mentor</span>
-              <CardTitle className="text-base font-bold text-slate-900 mt-1">Dr. Rajesh Kumar</CardTitle>
+              <CardTitle className="text-base font-bold text-slate-900 mt-1">Mr. Vijay</CardTitle>
               <p className="text-xs text-slate-500">Principal Software Architect · TechCorp</p>
             </CardHeader>
             <CardContent className="space-y-3 pt-2">
@@ -192,7 +192,7 @@ export default function StudentDashboardPage() {
               <p className="text-xs text-slate-500 leading-relaxed">
                 Connect dashboard UI components to backend endpoints and manage global async state cleanly.
               </p>
-              <Button asChild className="w-full" size="sm">
+              <Button style={{color:"white"}} asChild className="w-full" size="sm">
                 <Link href="/student/tasks">Submit Work <ArrowRight className="h-3.5 w-3.5 ml-1" /></Link>
               </Button>
             </CardContent>
