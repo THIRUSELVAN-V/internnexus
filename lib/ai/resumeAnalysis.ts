@@ -1,57 +1,163 @@
-import type { ResumeAnalysis } from '@/lib/types';
+import type { User } from "firebase/auth";
+import type { ResumeAnalysis } from "@/lib/types";
 
-export async function analyzeResume(resumeTextOrFile: string | File): Promise<ResumeAnalysis> {
-  // Simulate AI parsing latency
-  await new Promise((res) => setTimeout(res, 1200));
+const MAX_RESUME_SIZE = 10 * 1024 * 1024; // 10 MB
+
+export class ResumeUploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ResumeUploadError";
+  }
+}
+
+export interface ResumeAnalyzeResult {
+  analysis: ResumeAnalysis;
+
+  resume: {
+    fileName: string;
+    contentType: "application/pdf";
+    size: number;
+  };
+}
+
+export async function uploadAndAnalyzeResume(
+  file: File,
+  user: User,
+  onProgress?: (value: number) => void,
+): Promise<ResumeAnalyzeResult> {
+  // --------------------------------------------------
+  // 1. Validate file type
+  // --------------------------------------------------
+
+  const isPdf =
+    file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+  if (!isPdf) {
+    throw new ResumeUploadError("Please select a PDF resume.");
+  }
+
+  // --------------------------------------------------
+  // 2. Validate file size
+  // --------------------------------------------------
+
+  if (file.size === 0) {
+    throw new ResumeUploadError("The selected resume is empty.");
+  }
+
+  if (file.size > MAX_RESUME_SIZE) {
+    throw new ResumeUploadError("The resume must be 10MB or smaller.");
+  }
+
+  // --------------------------------------------------
+  // 3. Show upload progress
+  // --------------------------------------------------
+
+  onProgress?.(10);
+
+  // --------------------------------------------------
+  // 4. Get Firebase authentication token
+  // --------------------------------------------------
+
+  let token: string;
+
+  try {
+    // Force refresh so we don't accidentally send
+    // an expired Firebase ID token.
+    token = await user.getIdToken(true);
+  } catch (caught) {
+    console.error("Failed to get Firebase ID token:", caught);
+
+    throw new ResumeUploadError(
+      "Your session has expired. Please sign in again.",
+    );
+  }
+
+  // --------------------------------------------------
+  // 5. Create multipart form data
+  // --------------------------------------------------
+
+  const formData = new FormData();
+
+  formData.append("resume", file, file.name);
+
+  // --------------------------------------------------
+  // 6. Send PDF to Next.js API
+  // --------------------------------------------------
+
+  let response: Response;
+
+  try {
+    response = await fetch("/api/resume/analyze", {
+      method: "POST",
+
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+
+      body: formData,
+    });
+  } catch (caught) {
+    console.error("Resume API request failed:", caught);
+
+    throw new ResumeUploadError(
+      "Network error while sending the resume. Please try again.",
+    );
+  }
+
+  onProgress?.(70);
+
+  // --------------------------------------------------
+  // 7. Read API response
+  // --------------------------------------------------
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    analysis?: ResumeAnalysis & {
+      fileName?: string;
+    };
+
+    error?: string;
+  };
+
+  // --------------------------------------------------
+  // 8. Handle API errors
+  // --------------------------------------------------
+
+  if (!response.ok) {
+    console.error("Resume API failed:", response.status, payload);
+
+    if (response.status === 401) {
+      throw new ResumeUploadError(
+        "Your session has expired. Please sign in again.",
+      );
+    }
+
+    throw new ResumeUploadError(
+      payload.error ?? `Resume analysis failed (HTTP ${response.status}).`,
+    );
+  }
+  if (!payload.analysis) {
+    throw new ResumeUploadError("The AI did not return a resume analysis.");
+  }
+
+  // --------------------------------------------------
+  // 9. Complete progress
+  // --------------------------------------------------
+
+  onProgress?.(100);
+
+  // --------------------------------------------------
+  // 10. Return analysis
+  // --------------------------------------------------
 
   return {
-    skills: ['React', 'TypeScript', 'Node.js', 'Tailwind CSS', 'Python', 'Git', 'REST APIs', 'SQL'],
-    technicalSkills: ['React', 'TypeScript', 'Next.js', 'Node.js', 'Python', 'PostgreSQL', 'Docker', 'Git'],
-    softSkills: ['Problem Solving', 'Team Collaboration', 'Communication', 'Time Management', 'Adaptability'],
-    education: [
-      {
-        degree: 'Bachelor of Technology in Computer Science & Engineering',
-        institution: 'Indian Institute of Technology (IIT), Madras',
-        year: 2026,
-        gpa: 8.9,
-      },
-    ],
-    experience: [
-      {
-        title: 'Frontend Developer Intern',
-        company: 'InnovateTech Solutions',
-        duration: 'May 2025 – Aug 2025 (3 months)',
-        description: 'Developed responsive UI components using React and Tailwind CSS. Integrated REST APIs and improved page load performance by 35%.',
-      },
-    ],
-    projects: [
-      {
-        name: 'AI Smart Task Planner',
-        description: 'Web application leveraging OpenAI API to auto-schedule student assignments and project deadlines.',
-        technologies: ['React', 'TypeScript', 'Node.js', 'OpenAI API'],
-        url: 'https://github.com/example/smart-task-planner',
-      },
-      {
-        name: 'Real-time Chat App',
-        description: 'Socket.io powered real-time messaging application with end-to-end encryption.',
-        technologies: ['React', 'Node.js', 'Socket.io', 'MongoDB'],
-      },
-    ],
-    certifications: [
-      'AWS Certified Cloud Practitioner',
-      'Meta Front-End Developer Professional Certificate',
-    ],
-    overallScore: 88,
-    summary: 'High-performing Computer Science undergraduate with strong practical experience in modern web development, TypeScript ecosystem, and cloud fundamentals.',
-    strengths: [
-      'Strong proficiency in modern JavaScript/TypeScript frameworks',
-      'Proven track record of building production web apps and APIs',
-      'High academic standing with relevant project portfolio',
-    ],
-    improvements: [
-      'Could add more backend microservices or system design experience',
-      'Include metrics or key performance indicators for past projects',
-    ],
-    analyzedAt: new Date().toISOString(),
+    analysis: payload.analysis,
+
+    resume: {
+      fileName: payload.analysis.fileName ?? file.name,
+
+      contentType: "application/pdf",
+
+      size: file.size,
+    },
   };
 }
