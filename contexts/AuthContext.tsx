@@ -11,6 +11,7 @@ interface AuthContextType {
   role: UserRole | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  refreshProfile?: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   role: null,
   loading: true,
   signOut: async () => {},
+  refreshProfile: async () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -26,16 +28,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchProfile = async (uid: string) => {
+    try {
+      const userProfile = await getUserProfile(uid);
+      setProfile(userProfile);
+    } catch {
+      setProfile(null);
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthChange(async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
-        try {
-          const userProfile = await getUserProfile(firebaseUser.uid);
-          setProfile(userProfile);
-        } catch {
-          setProfile(null);
-        }
+        await fetchProfile(firebaseUser.uid);
       } else {
         setProfile(null);
       }
@@ -45,6 +51,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, []);
 
+  const refreshProfile = async () => {
+    if (user) {
+      await fetchProfile(user.uid);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -53,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: profile?.role ?? null,
         loading,
         signOut,
+        refreshProfile,
       }}
     >
       {children}

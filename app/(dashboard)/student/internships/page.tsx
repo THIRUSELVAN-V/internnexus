@@ -1,87 +1,189 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Search, MapPin, Building2, Clock, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Search, MapPin, Building2, Clock, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
 import CandidateMatchCard from '@/components/ai/CandidateMatchCard';
-
-const mockInternships = [
-  {
-    id: 'int-1',
-    title: 'Frontend Web Development Intern',
-    company: 'TechCorp India',
-    location: 'Remote / Bangalore',
-    mode: 'remote',
-    duration: 12,
-    stipend: 25000,
-    openings: 5,
-    skills: ['React', 'TypeScript', 'Tailwind CSS', 'Git'],
-    description: 'Build production React components for our flagship SaaS application. Work directly under senior architects.',
-    matchScore: 94,
-    matchedSkills: ['React', 'TypeScript', 'Tailwind CSS', 'Git'],
-    missingSkills: ['GraphQL'],
-    reasoning: 'Extremely high skill overlap with student resume. Matches 4 out of 5 required technical skills.',
-  },
-  {
-    id: 'int-2',
-    title: 'Full Stack Engineering Intern',
-    company: 'InnovateTech Solutions',
-    location: 'Hyderabad, India',
-    mode: 'hybrid',
-    duration: 16,
-    stipend: 30000,
-    openings: 3,
-    skills: ['React', 'Node.js', 'PostgreSQL', 'Docker'],
-    description: 'Develop REST APIs and frontend views for enterprise analytics platform.',
-    matchScore: 88,
-    matchedSkills: ['React', 'Node.js'],
-    missingSkills: ['PostgreSQL', 'Docker'],
-    reasoning: 'Strong foundation in Node and React. Backend database experience will be learned during onboarding.',
-  },
-  {
-    id: 'int-3',
-    title: 'UI/UX Design & Frontend Intern',
-    company: 'CreativeStudio',
-    location: 'Mumbai, India',
-    mode: 'onsite',
-    duration: 8,
-    stipend: 20000,
-    openings: 2,
-    skills: ['Figma', 'React', 'CSS Animations', 'Design Systems'],
-    description: 'Design interactive web wireframes in Figma and implement responsive HTML/CSS prototypes.',
-    matchScore: 72,
-    matchedSkills: ['React', 'CSS Animations'],
-    missingSkills: ['Figma Design'],
-    reasoning: 'Good coding alignment, but lacks formal UI/UX portfolio projects.',
-  },
-];
+import { useAuthContext } from '@/contexts/AuthContext';
+import { getDocuments, createDocument } from '@/lib/firebase/firestore';
+import { matchCandidateWithInternship } from '@/lib/ai/candidateMatch';
+import { Internship, Application, StudentProfile } from '@/lib/types';
 
 export default function BrowseInternshipsPage() {
-  const [query, setQuery] = useState('');
-  const [selectedInternship, setSelectedInternship] = useState<typeof mockInternships[0] | null>(null);
-  const [appliedIds, setAppliedIds] = useState<string[]>([]);
+  const { profile } = useAuthContext();
+  const student = profile as StudentProfile;
 
-  const filtered = mockInternships.filter((item) =>
+  const [query, setQuery] = useState('');
+  const [internships, setInternships] = useState<Internship[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [matches, setMatches] = useState<Record<string, any>>({});
+  const [loading, setLoading] = useState(true);
+
+  const [selectedInternship, setSelectedInternship] = useState<Internship | null>(null);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      try {
+        const [internDocs, appDocs] = await Promise.all([
+          getDocuments<Internship>('internships'),
+          getDocuments<Application>('applications'),
+        ]);
+
+        // Fallback default internships if collection is empty
+        let displayInternships = internDocs;
+        if (!displayInternships || displayInternships.length === 0) {
+          displayInternships = [
+            {
+              id: 'int-1',
+              companyId: 'comp-1',
+              companyName: 'TechCorp India',
+              title: 'Frontend Web Development Intern',
+              description: 'Build production React & TypeScript components for our flagship SaaS platform. Work directly under senior engineers.',
+              requirements: ['React', 'TypeScript', 'Tailwind CSS', 'Git', 'REST APIs'],
+              skills: ['React', 'TypeScript', 'Tailwind CSS', 'Git'],
+              domain: 'Software Development',
+              duration: 12,
+              stipend: 25000,
+              location: 'Remote / Bangalore',
+              mode: 'remote',
+              openings: 5,
+              applicationDeadline: '2026-09-30',
+              startDate: '2026-10-01',
+              status: 'active',
+              hrId: 'hr-1',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            {
+              id: 'int-2',
+              companyId: 'comp-2',
+              companyName: 'InnovateTech Solutions',
+              title: 'Full Stack Engineering Intern',
+              description: 'Develop REST APIs and React frontend dashboards for enterprise client analytics application.',
+              requirements: ['React', 'Node.js', 'PostgreSQL', 'Docker'],
+              skills: ['React', 'Node.js', 'PostgreSQL', 'Docker'],
+              domain: 'Software Development',
+              duration: 16,
+              stipend: 30000,
+              location: 'Hyderabad, India',
+              mode: 'hybrid',
+              openings: 3,
+              applicationDeadline: '2026-10-15',
+              startDate: '2026-11-01',
+              status: 'active',
+              hrId: 'hr-2',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            {
+              id: 'int-3',
+              companyId: 'comp-3',
+              companyName: 'CreativeStudio',
+              title: 'UI/UX Design & Frontend Intern',
+              description: 'Design wireframes in Figma and build interactive HTML/CSS/React prototypes.',
+              requirements: ['Figma', 'React', 'CSS Animations', 'UI/UX Design'],
+              skills: ['Figma', 'React', 'CSS Animations', 'UI/UX Design'],
+              domain: 'UI/UX Design',
+              duration: 8,
+              stipend: 20000,
+              location: 'Mumbai, India',
+              mode: 'onsite',
+              openings: 2,
+              applicationDeadline: '2026-09-25',
+              startDate: '2026-10-05',
+              status: 'active',
+              hrId: 'hr-3',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ];
+        }
+
+        setInternships(displayInternships);
+        setApplications(appDocs);
+
+        // Run AI matching for student skills vs internship requirements
+        const studentSkills = student?.skills || ['React', 'TypeScript', 'Node.js', 'Tailwind CSS', 'Git'];
+        const matchMap: Record<string, any> = {};
+
+        for (const item of displayInternships) {
+          const matchResult = await matchCandidateWithInternship(
+            studentSkills,
+            item.requirements || item.skills || [],
+            'preview-app',
+            item.id,
+            profile?.uid || 'std-1'
+          );
+          matchMap[item.id] = matchResult;
+        }
+
+        setMatches(matchMap);
+      } catch (err) {
+        console.error('Error fetching internships:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, [profile]);
+
+  const studentAppliedIds = applications
+    .filter((a) => a.studentId === profile?.uid)
+    .map((a) => a.internshipId);
+
+  const filtered = internships.filter((item) =>
     item.title.toLowerCase().includes(query.toLowerCase()) ||
-    item.company.toLowerCase().includes(query.toLowerCase()) ||
-    item.skills.some((s) => s.toLowerCase().includes(query.toLowerCase()))
+    item.companyName.toLowerCase().includes(query.toLowerCase()) ||
+    (item.skills || []).some((s) => s.toLowerCase().includes(query.toLowerCase()))
   );
 
-  const handleApply = (id: string) => {
-    setAppliedIds((prev) => [...prev, id]);
-    setSelectedInternship(null);
+  const handleApply = async (internship: Internship) => {
+    if (!profile?.uid) return;
+    setApplyingId(internship.id);
+    try {
+      const matchInfo = matches[internship.id];
+
+      const newApp: Omit<Application, 'id'> = {
+        internshipId: internship.id,
+        internshipTitle: internship.title,
+        companyId: internship.companyId,
+        companyName: internship.companyName,
+        studentId: profile.uid,
+        studentName: profile.displayName || 'Student',
+        studentEmail: profile.email || '',
+        resumeURL: student?.resumeURL || 'https://storage.googleapis.com/demo/resume.pdf',
+        status: 'ai_reviewed',
+        matchScore: matchInfo?.matchScore || 85,
+        matchedSkills: matchInfo?.matchedSkills || [],
+        missingSkills: matchInfo?.missingSkills || [],
+        matchReasoning: matchInfo?.reasoning || 'Strong skill alignment.',
+        appliedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const newDocId = await createDocument('applications', newApp);
+      setApplications((prev) => [...prev, { id: newDocId, ...newApp }]);
+      setSelectedInternship(null);
+    } catch (err) {
+      console.error('Error applying to internship:', err);
+    } finally {
+      setApplyingId(null);
+    }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Browse Internships</h1>
-          <p className="text-xs text-slate-500">Explore open internship postings with instant AI compatibility scoring</p>
+          <h1 className="text-xl font-bold text-slate-900">Browse Open Internships</h1>
+          <p className="text-xs text-slate-500">Explore active listings with real-time AI candidate compatibility scores</p>
         </div>
         <div className="w-full sm:w-72">
           <Input
@@ -93,61 +195,79 @@ export default function BrowseInternshipsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filtered.map((item) => {
-          const isApplied = appliedIds.includes(item.id);
-          return (
-            <Card key={item.id} className="flex flex-col justify-between hover:border-blue-300 transition-all">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <Badge variant="purple" className="text-[11px] font-semibold mb-2">
-                      <Sparkles className="h-3 w-3 mr-1" /> {item.matchScore}% Match
-                    </Badge>
-                    <CardTitle className="text-base font-bold text-slate-900 leading-snug">{item.title}</CardTitle>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">{item.company}</p>
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <span className="ml-3 text-sm text-slate-500 font-medium">Running AI match engine against open positions...</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filtered.map((item) => {
+            const isApplied = studentAppliedIds.includes(item.id);
+            const match = matches[item.id];
+            const score = match?.matchScore || 80;
+
+            return (
+              <Card key={item.id} className="flex flex-col justify-between hover:border-blue-300 transition-all shadow-sm">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <Badge variant="purple" className="text-[11px] font-semibold mb-2">
+                        <Sparkles className="h-3 w-3 mr-1 text-purple-600" /> {score}% AI Match
+                      </Badge>
+                      <CardTitle className="text-base font-bold text-slate-900 leading-snug">{item.title}</CardTitle>
+                      <p className="text-xs text-slate-500 font-medium mt-0.5">{item.companyName}</p>
+                    </div>
+                    <div className="h-9 w-9 rounded-xl bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0 border border-blue-100">
+                      {item.companyName.slice(0, 2).toUpperCase()}
+                    </div>
                   </div>
-                  <div className="h-9 w-9 rounded-xl bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
-                    {item.company.slice(0, 2).toUpperCase()}
+                </CardHeader>
+
+                <CardContent className="space-y-3 pt-0 text-xs text-slate-600 flex-1">
+                  <p className="line-clamp-2 leading-relaxed">{item.description}</p>
+
+                  <div className="flex flex-wrap items-center gap-3 text-slate-500">
+                    <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-slate-400" /> {item.location}</span>
+                    <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5 text-slate-400" /> {item.duration} wks</span>
+                    <span className="font-semibold text-slate-900">₹{(item.stipend || 20000).toLocaleString()}/mo</span>
                   </div>
+
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {(item.skills || []).map((sk) => (
+                      <Badge key={sk} variant="secondary" className="text-[11px] bg-slate-100 text-slate-700">
+                        {sk}
+                      </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+
+                <div className="p-4 border-t border-slate-100 mt-2 flex items-center justify-between gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedInternship(item)}>
+                    Details & AI Match
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={isApplied || applyingId === item.id}
+                    onClick={() => handleApply(item)}
+                    className={isApplied ? 'bg-green-600 hover:bg-green-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}
+                  >
+                    {applyingId === item.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : isApplied ? (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Applied
+                      </>
+                    ) : (
+                      'Apply Now'
+                    )}
+                  </Button>
                 </div>
-              </CardHeader>
-
-              <CardContent className="space-y-3 pt-0 text-xs text-slate-600 flex-1">
-                <p className="line-clamp-2 leading-relaxed">{item.description}</p>
-
-                <div className="flex flex-wrap items-center gap-3 text-slate-500">
-                  <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-slate-400" /> {item.location}</span>
-                  <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5 text-slate-400" /> {item.duration} weeks</span>
-                  <span className="font-semibold text-slate-900">₹{item.stipend.toLocaleString()}/mo</span>
-                </div>
-
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {item.skills.map((sk) => (
-                    <Badge key={sk} variant="secondary" className="text-[11px] bg-slate-100 text-slate-700">
-                      {sk}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-
-              <div className="p-6 pt-0 border-t border-slate-100 mt-3 pt-3 flex items-center justify-between gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setSelectedInternship(item)}>
-                  View Details & AI Match
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={isApplied}
-                  onClick={() => handleApply(item.id)}
-                  className={isApplied ? 'bg-green-600 hover:bg-green-600' : ''}
-                >
-                  {isApplied ? <><CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Applied</> : 'Apply Now'}
-                </Button>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* Details & AI Match Dialog */}
       {selectedInternship && (
@@ -156,34 +276,44 @@ export default function BrowseInternshipsPage() {
             <DialogHeader>
               <div className="flex items-center gap-2">
                 <Badge variant="purple" className="text-xs">
-                  <Sparkles className="h-3 w-3 mr-1" /> {selectedInternship.matchScore}% Match
+                  <Sparkles className="h-3 w-3 mr-1" /> {matches[selectedInternship.id]?.matchScore || 85}% Match
                 </Badge>
                 <Badge variant="outline" className="text-xs capitalize">{selectedInternship.mode}</Badge>
               </div>
               <DialogTitle className="text-lg font-bold text-slate-900">{selectedInternship.title}</DialogTitle>
-              <DialogDescription>{selectedInternship.company} · {selectedInternship.location}</DialogDescription>
+              <DialogDescription>{selectedInternship.companyName} · {selectedInternship.location}</DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-2">
               <div>
-                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Description</h4>
-                <p className="text-xs text-slate-600 leading-relaxed">{selectedInternship.description}</p>
+                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Job Description</h4>
+                <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  {selectedInternship.description}
+                </p>
               </div>
 
               {/* AI Match Component */}
               <CandidateMatchCard
-                matchScore={selectedInternship.matchScore}
-                matchedSkills={selectedInternship.matchedSkills}
-                missingSkills={selectedInternship.missingSkills}
-                reasoning={selectedInternship.reasoning}
-                recommendation={selectedInternship.matchScore >= 80 ? 'strong_match' : 'good_match'}
+                matchScore={matches[selectedInternship.id]?.matchScore || 85}
+                matchedSkills={matches[selectedInternship.id]?.matchedSkills || selectedInternship.skills || []}
+                missingSkills={matches[selectedInternship.id]?.missingSkills || []}
+                reasoning={matches[selectedInternship.id]?.reasoning || 'Good skill overlap with student resume profile.'}
+                recommendation={
+                  (matches[selectedInternship.id]?.matchScore || 85) >= 80 ? 'strong_match' : 'good_match'
+                }
               />
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setSelectedInternship(null)}>Close</Button>
-              <Button onClick={() => handleApply(selectedInternship.id)} disabled={appliedIds.includes(selectedInternship.id)}>
-                {appliedIds.includes(selectedInternship.id) ? 'Already Applied' : 'Confirm Application'}
+              <Button variant="outline" onClick={() => setSelectedInternship(null)}>
+                Close
+              </Button>
+              <Button
+                onClick={() => handleApply(selectedInternship)}
+                disabled={studentAppliedIds.includes(selectedInternship.id) || applyingId === selectedInternship.id}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {studentAppliedIds.includes(selectedInternship.id) ? 'Already Applied' : 'Confirm Application'}
               </Button>
             </DialogFooter>
           </DialogContent>

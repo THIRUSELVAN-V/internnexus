@@ -1,19 +1,44 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import CustomBarChart from '@/components/dashboard/charts/BarChart';
 import CustomPieChart from '@/components/dashboard/charts/PieChart';
 import CustomLineChart from '@/components/dashboard/charts/LineChart';
 import { Button } from '@/components/ui/button';
-import { Download, FileBarChart } from 'lucide-react';
+import { Download, FileBarChart, Loader2 } from 'lucide-react';
+import { getDocuments } from '@/lib/firebase/firestore';
+import { downloadCSV } from '@/lib/utils/exportCSV';
+import { Application, Certificate, MentorAssignment } from '@/lib/types';
 
 export default function HRReportsPage() {
+  const [downloading, setDownloading] = useState(false);
+
+  const exportApplicantPipelineReport = async () => {
+    setDownloading(true);
+    try {
+      const apps = await getDocuments<Application>('applications');
+      const rows = apps.map((a) => ({
+        ApplicationID: a.id,
+        StudentName: a.studentName,
+        Email: a.studentEmail,
+        InternshipTitle: a.internshipTitle,
+        MatchScore: a.matchScore || 'N/A',
+        Status: a.status,
+        AppliedAt: a.appliedAt,
+      }));
+      downloadCSV('HR_Applicant_Pipeline_Report', rows);
+    } catch (err) {
+      console.error('Error exporting applicant report:', err);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const lineData = [
-    { month: 'May', applicants: 45, hires: 8 },
-    { month: 'Jun', applicants: 80, hires: 14 },
-    { month: 'Jul', applicants: 125, hires: 20 },
-    { month: 'Aug', applicants: 150, hires: 25 },
+    { month: 'Jun', applicants: 45, hires: 8 },
+    { month: 'Jul', applicants: 80, hires: 14 },
+    { month: 'Aug', applicants: 125, hires: 20 },
   ];
 
   const domainData = [
@@ -27,11 +52,12 @@ export default function HRReportsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Recruitment & Performance Reports</h1>
+          <h1 className="text-xl font-bold text-slate-900">Recruitment & Cohort Reports</h1>
           <p className="text-xs text-slate-500">Analytics on applicant pipelines, AI matching accuracy, and intern completion rates</p>
         </div>
-        <Button variant="outline" size="sm">
-          <Download className="h-4 w-4 mr-1.5" /> Export PDF Report
+        <Button onClick={exportApplicantPipelineReport} disabled={downloading} className="bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs">
+          {downloading ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Download className="h-4 w-4 mr-1.5" />}
+          Export Applicants CSV Report
         </Button>
       </div>
 

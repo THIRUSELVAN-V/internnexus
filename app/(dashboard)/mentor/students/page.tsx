@@ -1,39 +1,95 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import DataTable, { Column } from '@/components/shared/DataTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { MessageSquare, Star } from 'lucide-react';
+import { MessageSquare, Star, Loader2, Sparkles } from 'lucide-react';
 import Link from 'next/link';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { getDocuments } from '@/lib/firebase/firestore';
+import { MentorAssignment, Task, Application, StudentProfile } from '@/lib/types';
 
-interface StudentRow {
+interface MenteeRow {
   id: string;
+  studentId: string;
   name: string;
   role: string;
-  college: string;
+  university: string;
   tasksDone: string;
   progress: number;
   rating: number;
 }
 
-const mockMentees: StudentRow[] = [
-  { id: '1', name: 'Thiru', role: 'Frontend Web Development Intern', college: 'IIT Madras', tasksDone: '12 / 15', progress: 80, rating: 4.8 },
-  { id: '2', name: 'Priya Sharma', role: 'Full Stack Engineering Intern', college: 'BITS Pilani', tasksDone: '14 / 16', progress: 88, rating: 5.0 },
-  { id: '3', name: 'Rahul Verma', role: 'UI/UX Design & Frontend Intern', college: 'NIT Trichy', tasksDone: '9 / 15', progress: 60, rating: 4.2 },
-];
-
 export default function MentorStudentsPage() {
-  const columns: Column<StudentRow>[] = [
+  const { profile } = useAuthContext();
+  const [loading, setLoading] = useState(true);
+  const [mentees, setMentees] = useState<MenteeRow[]>([]);
+
+  useEffect(() => {
+    async function fetchMenteesData() {
+      setLoading(true);
+      try {
+        const [assignments, tasks, applications, users] = await Promise.all([
+          getDocuments<MentorAssignment>('mentorAssignments'),
+          getDocuments<Task>('tasks'),
+          getDocuments<Application>('applications'),
+          getDocuments<StudentProfile>('users'),
+        ]);
+
+        const myAssignments = profile?.uid
+          ? assignments.filter((a) => a.mentorId === profile.uid)
+          : assignments;
+
+        let rows: MenteeRow[] = (myAssignments.length > 0 ? myAssignments : assignments).map((assign) => {
+          const studentTasks = tasks.filter((t) => t.studentId === assign.studentId);
+          const completedCount = studentTasks.filter((t) => t.status === 'approved').length;
+          const totalCount = studentTasks.length || 4;
+          const pct = Math.round((completedCount / totalCount) * 100);
+
+          const app = applications.find((a) => a.studentId === assign.studentId);
+          const stdUser = users.find((u) => u.uid === assign.studentId);
+
+          return {
+            id: assign.id,
+            studentId: assign.studentId,
+            name: assign.studentName,
+            role: app?.internshipTitle || 'Frontend Web Development Intern',
+            university: stdUser?.university || 'IIT Madras',
+            tasksDone: `${completedCount} / ${totalCount}`,
+            progress: pct,
+            rating: 4.8,
+          };
+        });
+
+        if (!rows || rows.length === 0) {
+          rows = [
+            { id: '1', studentId: 'std-1', name: 'Thiru', role: 'Frontend Web Development Intern', university: 'IIT Madras', tasksDone: '12 / 15', progress: 80, rating: 4.8 },
+            { id: '2', studentId: 'std-2', name: 'Priya Sharma', role: 'Full Stack Engineering Intern', university: 'BITS Pilani', tasksDone: '14 / 16', progress: 88, rating: 5.0 },
+          ];
+        }
+
+        setMentees(rows);
+      } catch (err) {
+        console.error('Error fetching mentees:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchMenteesData();
+  }, [profile]);
+
+  const columns: Column<MenteeRow>[] = [
     {
       key: 'name',
       header: 'Student Name',
       render: (item) => (
         <div>
           <p className="font-bold text-slate-900">{item.name}</p>
-          <p className="text-xs text-slate-500">{item.college}</p>
+          <p className="text-xs text-slate-500">{item.university}</p>
         </div>
       ),
     },
@@ -44,9 +100,9 @@ export default function MentorStudentsPage() {
     },
     {
       key: 'tasksDone',
-      header: 'Task Progress',
+      header: 'Task Velocity Progress',
       render: (item) => (
-        <div className="w-32 space-y-1">
+        <div className="w-36 space-y-1">
           <div className="flex justify-between text-xs font-mono">
             <span>{item.tasksDone}</span>
             <span>{item.progress}%</span>
@@ -67,12 +123,14 @@ export default function MentorStudentsPage() {
     {
       key: 'actions',
       header: 'Actions',
-      render: () => (
+      render: (item) => (
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" asChild>
-            <Link href="/mentor/feedback"><MessageSquare className="h-3.5 w-3.5 mr-1" /> Leave Feedback</Link>
+            <Link href="/mentor/task-generator">
+              <Sparkles className="h-3.5 w-3.5 mr-1 text-purple-600" /> AI Task
+            </Link>
           </Button>
-          <Button style={{color:"white"}} size="sm" className="bg-green-600 hover:bg-green-700" asChild>
+          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white font-semibold text-xs" asChild>
             <Link href="/mentor/evaluation">Final Evaluation</Link>
           </Button>
         </div>
@@ -83,13 +141,20 @@ export default function MentorStudentsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Assigned Students</h1>
-        <p className="text-xs text-slate-500">Overview of active mentees assigned under your mentorship</p>
+        <h1 className="text-xl font-bold text-slate-900">Assigned Student Mentees</h1>
+        <p className="text-xs text-slate-500">Overview of active student mentees assigned under your corporate mentorship</p>
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <DataTable data={mockMentees} columns={columns} searchKey="name" searchPlaceholder="Search students..." />
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-7 w-7 animate-spin text-green-600" />
+              <span className="ml-3 text-xs text-slate-500 font-medium">Fetching assigned mentees...</span>
+            </div>
+          ) : (
+            <DataTable data={mentees} columns={columns} searchKey="name" searchPlaceholder="Search student mentees..." />
+          )}
         </CardContent>
       </Card>
     </div>
