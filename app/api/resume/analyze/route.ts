@@ -190,7 +190,16 @@ export async function POST(request: Request) {
       },
     });
   } catch (caught) {
-    console.error("Resume analysis failed:", caught);
+    console.error("=================================");
+    console.error("RESUME ANALYSIS FAILED");
+    console.error("Error:", caught);
+
+    if (caught instanceof ResumeAnalysisError) {
+      console.error("Status:", caught.status);
+      console.error("Message:", caught.message);
+    }
+
+    console.error("=================================");
 
     const resumeError =
       caught instanceof ResumeAnalysisError

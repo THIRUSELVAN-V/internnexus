@@ -1,189 +1,573 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Search, MapPin, Building2, Clock, Sparkles, CheckCircle2 } from 'lucide-react';
-import CandidateMatchCard from '@/components/ai/CandidateMatchCard';
+import React, { useEffect, useState } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Search, MapPin, Clock, CheckCircle2, Loader2 } from "lucide-react";
 
-const mockInternships = [
-  {
-    id: 'int-1',
-    title: 'Frontend Web Development Intern',
-    company: 'TechCorp India',
-    location: 'Remote / Bangalore',
-    mode: 'remote',
-    duration: 12,
-    stipend: 25000,
-    openings: 5,
-    skills: ['React', 'TypeScript', 'Tailwind CSS', 'Git'],
-    description: 'Build production React components for our flagship SaaS application. Work directly under senior architects.',
-    matchScore: 94,
-    matchedSkills: ['React', 'TypeScript', 'Tailwind CSS', 'Git'],
-    missingSkills: ['GraphQL'],
-    reasoning: 'Extremely high skill overlap with student resume. Matches 4 out of 5 required technical skills.',
-  },
-  {
-    id: 'int-2',
-    title: 'Full Stack Engineering Intern',
-    company: 'InnovateTech Solutions',
-    location: 'Hyderabad, India',
-    mode: 'hybrid',
-    duration: 16,
-    stipend: 30000,
-    openings: 3,
-    skills: ['React', 'Node.js', 'PostgreSQL', 'Docker'],
-    description: 'Develop REST APIs and frontend views for enterprise analytics platform.',
-    matchScore: 88,
-    matchedSkills: ['React', 'Node.js'],
-    missingSkills: ['PostgreSQL', 'Docker'],
-    reasoning: 'Strong foundation in Node and React. Backend database experience will be learned during onboarding.',
-  },
-  {
-    id: 'int-3',
-    title: 'UI/UX Design & Frontend Intern',
-    company: 'CreativeStudio',
-    location: 'Mumbai, India',
-    mode: 'onsite',
-    duration: 8,
-    stipend: 20000,
-    openings: 2,
-    skills: ['Figma', 'React', 'CSS Animations', 'Design Systems'],
-    description: 'Design interactive web wireframes in Figma and implement responsive HTML/CSS prototypes.',
-    matchScore: 72,
-    matchedSkills: ['React', 'CSS Animations'],
-    missingSkills: ['Figma Design'],
-    reasoning: 'Good coding alignment, but lacks formal UI/UX portfolio projects.',
-  },
-];
+import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase/config";
+
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  addDoc,
+  serverTimestamp,
+  increment,
+  updateDoc,
+} from "firebase/firestore";
+
+interface Internship {
+  id: string;
+  title: string;
+  company: string;
+  companyId?: string;
+  location: string;
+  mode: string;
+  duration: number;
+  stipend: number;
+  openings: number;
+  skills: string[];
+  description: string;
+  requirements: string[];
+  status: string;
+}
 
 export default function BrowseInternshipsPage() {
-  const [query, setQuery] = useState('');
-  const [selectedInternship, setSelectedInternship] = useState<typeof mockInternships[0] | null>(null);
+  const [queryText, setQueryText] = useState("");
+
+  const [internships, setInternships] = useState<Internship[]>([]);
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
 
-  const filtered = mockInternships.filter((item) =>
-    item.title.toLowerCase().includes(query.toLowerCase()) ||
-    item.company.toLowerCase().includes(query.toLowerCase()) ||
-    item.skills.some((s) => s.toLowerCase().includes(query.toLowerCase()))
-  );
+  const [selectedInternship, setSelectedInternship] =
+    useState<Internship | null>(null);
 
-  const handleApply = (id: string) => {
-    setAppliedIds((prev) => [...prev, id]);
-    setSelectedInternship(null);
+  const [loading, setLoading] = useState(true);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  // ---------------------------------------------------------
+  // Load internships + student's existing applications
+  // ---------------------------------------------------------
+
+  const loadData = async (uid: string) => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const db = getFirebaseDb();
+
+      // -----------------------------------------------------
+      // 1. Load active internships
+      // -----------------------------------------------------
+
+      const internshipSnapshot = await getDocs(collection(db, "internships"));
+
+      const activeInternships = internshipSnapshot.docs.filter((docSnap) => {
+        const data = docSnap.data();
+
+        return data.status === "active";
+      });
+
+      // -----------------------------------------------------
+      // 2. Load company names
+      // -----------------------------------------------------
+
+      const companyCache = new Map<string, string>();
+
+      const companyIds = Array.from(
+        new Set(
+          activeInternships
+            .map((docSnap) => docSnap.data().companyId)
+            .filter(Boolean),
+        ),
+      );
+
+      await Promise.all(
+        companyIds.map(async (companyId) => {
+          try {
+            const companySnap = await getDoc(doc(db, "companies", companyId));
+
+            if (companySnap.exists()) {
+              const companyData = companySnap.data();
+
+              companyCache.set(companyId, companyData.companyName || "Company");
+            }
+          } catch (companyError) {
+            console.error("Failed to load company:", companyId, companyError);
+          }
+        }),
+      );
+
+      // -----------------------------------------------------
+      // 3. Convert Firestore internships into UI objects
+      // -----------------------------------------------------
+
+      const loadedInternships: Internship[] = activeInternships.map(
+        (docSnap) => {
+          const data = docSnap.data();
+
+          const companyId = data.companyId || "";
+
+          return {
+            id: docSnap.id,
+            title: data.title || "Untitled Internship",
+            company: companyCache.get(companyId) || "Company",
+            companyId,
+            location: data.location || "Not specified",
+            mode: data.mode || "Not specified",
+            duration: Number(data.duration || 0),
+            stipend: Number(data.stipend || 0),
+            openings: Number(data.openings || 0),
+            skills: Array.isArray(data.skills) ? data.skills : [],
+            description: data.description || "",
+            requirements: Array.isArray(data.requirements)
+              ? data.requirements
+              : [],
+            status: data.status || "active",
+          };
+        },
+      );
+
+      setInternships(loadedInternships);
+
+      // -----------------------------------------------------
+      // 4. Load applications belonging to current student
+      // -----------------------------------------------------
+
+      const applicationQuery = query(
+        collection(db, "applications"),
+        where("studentId", "==", uid),
+      );
+
+      const applicationSnapshot = await getDocs(applicationQuery);
+
+      const existingApplicationIds = applicationSnapshot.docs
+        .map((applicationDoc) => {
+          const data = applicationDoc.data();
+          return data.internshipId;
+        })
+        .filter(Boolean);
+
+      setAppliedIds(existingApplicationIds);
+    } catch (err) {
+      console.error("Failed to load internships:", err);
+
+      setError(
+        err instanceof Error ? err.message : "Failed to load internships.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // ---------------------------------------------------------
+  // Authenticate student and load data
+  // ---------------------------------------------------------
+
+  useEffect(() => {
+    const auth = getFirebaseAuth();
+
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        setLoading(false);
+        setError("Please log in to browse internships.");
+        return;
+      }
+
+      await loadData(user.uid);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // ---------------------------------------------------------
+  // Apply for internship
+  // ---------------------------------------------------------
+
+  const handleApply = async (internship: Internship) => {
+    try {
+      setApplyingId(internship.id);
+      setError("");
+
+      const auth = getFirebaseAuth();
+      const db = getFirebaseDb();
+
+      const user = auth.currentUser;
+
+      if (!user) {
+        setError("Please log in before applying.");
+        return;
+      }
+
+      // Prevent duplicate application
+      if (appliedIds.includes(internship.id)) {
+        return;
+      }
+
+      // -----------------------------------------------------
+      // Create application
+      // -----------------------------------------------------
+
+      const applicationData = {
+        studentId: user.uid,
+        internshipId: internship.id,
+        companyId: internship.companyId || "",
+        status: "applied",
+
+        // AI matching will be added/updated by the HR workflow.
+        candidateMatch: null,
+        matchScore: null,
+        matchedSkills: [],
+        missingSkills: [],
+        matchReasoning: "",
+
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      const applicationRef = await addDoc(
+        collection(db, "applications"),
+        applicationData,
+      );
+
+      console.log("Application created successfully:", applicationRef.id);
+
+      // -----------------------------------------------------
+      // Increase applicant count
+      // -----------------------------------------------------
+
+      try {
+        await updateDoc(doc(db, "internships", internship.id), {
+          applicantsCount: increment(1),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (countError) {
+        // Application was already created, so don't show
+        // the student a failed application message.
+        console.error(
+          "Application created, but applicant count could not be updated:",
+          countError,
+        );
+      }
+
+      // -----------------------------------------------------
+      // Update UI
+      // -----------------------------------------------------
+
+      setAppliedIds((previous) => [...previous, internship.id]);
+
+      setSelectedInternship(null);
+    } catch (err) {
+      console.error("Failed to apply:", err);
+
+      setError(
+        err instanceof Error ? err.message : "Failed to submit application.",
+      );
+    } finally {
+      setApplyingId(null);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Search
+  // ---------------------------------------------------------
+
+  const filteredInternships = internships.filter((item) => {
+    const search = queryText.toLowerCase();
+
+    return (
+      item.title.toLowerCase().includes(search) ||
+      item.company.toLowerCase().includes(search) ||
+      item.skills.some((skill) => skill.toLowerCase().includes(search))
+    );
+  });
+
+  // ---------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Browse Internships</h1>
-          <p className="text-xs text-slate-500">Explore open internship postings with instant AI compatibility scoring</p>
+          <h1 className="text-xl font-bold text-slate-900">
+            Browse Internships
+          </h1>
+
+          <p className="text-xs text-slate-500">
+            Explore open internship postings
+          </p>
         </div>
+
         <div className="w-full sm:w-72">
           <Input
             placeholder="Search role, company or skill..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={queryText}
+            onChange={(e) => setQueryText(e.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filtered.map((item) => {
-          const isApplied = appliedIds.includes(item.id);
-          return (
-            <Card key={item.id} className="flex flex-col justify-between hover:border-blue-300 transition-all">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <Badge variant="purple" className="text-[11px] font-semibold mb-2">
-                      <Sparkles className="h-3 w-3 mr-1" /> {item.matchScore}% Match
-                    </Badge>
-                    <CardTitle className="text-base font-bold text-slate-900 leading-snug">{item.title}</CardTitle>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">{item.company}</p>
+      {/* Error */}
+      {error && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-red-600">{error}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Loading */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+
+          <span className="text-sm text-slate-600">Loading internships...</span>
+        </div>
+      ) : filteredInternships.length === 0 ? (
+        <Card>
+          <CardContent className="py-16 text-center">
+            <p className="text-sm text-slate-500">
+              No active internships found.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        /* Internship Cards */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredInternships.map((item) => {
+            const isApplied = appliedIds.includes(item.id);
+            const isApplying = applyingId === item.id;
+
+            return (
+              <Card
+                key={item.id}
+                className="flex flex-col justify-between hover:border-blue-300 transition-all"
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] font-semibold mb-2"
+                      >
+                        Open Internship
+                      </Badge>
+
+                      <CardTitle className="text-base font-bold text-slate-900 leading-snug">
+                        {item.title}
+                      </CardTitle>
+
+                      <p className="text-xs text-slate-500 font-medium mt-0.5">
+                        {item.company}
+                      </p>
+                    </div>
+
+                    <div className="h-9 w-9 rounded-xl bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
+                      {item.company.slice(0, 2).toUpperCase()}
+                    </div>
                   </div>
-                  <div className="h-9 w-9 rounded-xl bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
-                    {item.company.slice(0, 2).toUpperCase()}
+                </CardHeader>
+
+                <CardContent className="space-y-3 pt-0 text-xs text-slate-600 flex-1">
+                  <p className="line-clamp-3 leading-relaxed">
+                    {item.description}
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-3 text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                      {item.location}
+                    </span>
+
+                    {item.duration > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5 text-slate-400" />
+                        {item.duration} weeks
+                      </span>
+                    )}
+
+                    {item.stipend > 0 && (
+                      <span className="font-semibold text-slate-900">
+                        ₹{item.stipend.toLocaleString()}/mo
+                      </span>
+                    )}
                   </div>
+
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {item.skills.map((skill) => (
+                      <Badge
+                        key={skill}
+                        variant="secondary"
+                        className="text-[11px] bg-slate-100 text-slate-700"
+                      >
+                        {skill}
+                      </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+
+                <div className="p-6 pt-0 border-t border-slate-100 mt-3 flex items-center justify-between gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedInternship(item)}
+                  >
+                    View Details
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    disabled={isApplied || isApplying}
+                    onClick={() => handleApply(item)}
+                    className={
+                      isApplied ? "bg-green-600 hover:bg-green-600" : ""
+                    }
+                  >
+                    {isApplying ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                        Applying...
+                      </>
+                    ) : isApplied ? (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                        Applied
+                      </>
+                    ) : (
+                      "Apply Now"
+                    )}
+                  </Button>
                 </div>
-              </CardHeader>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
-              <CardContent className="space-y-3 pt-0 text-xs text-slate-600 flex-1">
-                <p className="line-clamp-2 leading-relaxed">{item.description}</p>
-
-                <div className="flex flex-wrap items-center gap-3 text-slate-500">
-                  <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-slate-400" /> {item.location}</span>
-                  <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5 text-slate-400" /> {item.duration} weeks</span>
-                  <span className="font-semibold text-slate-900">₹{item.stipend.toLocaleString()}/mo</span>
-                </div>
-
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {item.skills.map((sk) => (
-                    <Badge key={sk} variant="secondary" className="text-[11px] bg-slate-100 text-slate-700">
-                      {sk}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-
-              <div className="p-6 pt-0 border-t border-slate-100 mt-3 pt-3 flex items-center justify-between gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setSelectedInternship(item)}>
-                  View Details & AI Match
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={isApplied}
-                  onClick={() => handleApply(item.id)}
-                  className={isApplied ? 'bg-green-600 hover:bg-green-600' : ''}
-                >
-                  {isApplied ? <><CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Applied</> : 'Apply Now'}
-                </Button>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Details & AI Match Dialog */}
+      {/* Details Dialog */}
       {selectedInternship && (
-        <Dialog open={!!selectedInternship} onOpenChange={() => setSelectedInternship(null)}>
+        <Dialog
+          open={!!selectedInternship}
+          onOpenChange={() => setSelectedInternship(null)}
+        >
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <div className="flex items-center gap-2">
-                <Badge variant="purple" className="text-xs">
-                  <Sparkles className="h-3 w-3 mr-1" /> {selectedInternship.matchScore}% Match
-                </Badge>
-                <Badge variant="outline" className="text-xs capitalize">{selectedInternship.mode}</Badge>
-              </div>
-              <DialogTitle className="text-lg font-bold text-slate-900">{selectedInternship.title}</DialogTitle>
-              <DialogDescription>{selectedInternship.company} · {selectedInternship.location}</DialogDescription>
+              <DialogTitle className="text-lg font-bold text-slate-900">
+                {selectedInternship.title}
+              </DialogTitle>
+
+              <DialogDescription>
+                {selectedInternship.company}
+              </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-2">
+            <div className="space-y-5 py-2">
+              {/* Description */}
               <div>
-                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Description</h4>
-                <p className="text-xs text-slate-600 leading-relaxed">{selectedInternship.description}</p>
+                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  Description
+                </h4>
+
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  {selectedInternship.description}
+                </p>
               </div>
 
-              {/* AI Match Component */}
-              <CandidateMatchCard
-                matchScore={selectedInternship.matchScore}
-                matchedSkills={selectedInternship.matchedSkills}
-                missingSkills={selectedInternship.missingSkills}
-                reasoning={selectedInternship.reasoning}
-                recommendation={selectedInternship.matchScore >= 80 ? 'strong_match' : 'good_match'}
-              />
+              {/* Requirements */}
+              <div>
+                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                  Requirements
+                </h4>
+
+                {selectedInternship.requirements.length > 0 ? (
+                  <ul className="list-disc pl-5 space-y-1">
+                    {selectedInternship.requirements.map(
+                      (requirement, index) => (
+                        <li
+                          key={`${requirement}-${index}`}
+                          className="text-sm text-slate-600"
+                        >
+                          {requirement}
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    No specific requirements provided.
+                  </p>
+                )}
+              </div>
+
+              {/* Skills */}
+              <div>
+                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                  Required Skills
+                </h4>
+
+                <div className="flex flex-wrap gap-2">
+                  {selectedInternship.skills.length > 0 ? (
+                    selectedInternship.skills.map((skill) => (
+                      <Badge key={skill} variant="secondary">
+                        {skill}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-sm text-slate-500">
+                      No specific skills listed.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* AI notice */}
+              <Card className="bg-slate-50 border-slate-200">
+                <CardContent className="p-4">
+                  <p className="text-sm font-semibold text-slate-800">
+                    AI Candidate Matching
+                  </p>
+
+                  <p className="text-xs text-slate-600 mt-1">
+                    After you apply, the HR team can run the AI
+                    candidate-matching analysis using your resume information
+                    and this internship's requirements.
+                  </p>
+                </CardContent>
+              </Card>
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setSelectedInternship(null)}>Close</Button>
-              <Button onClick={() => handleApply(selectedInternship.id)} disabled={appliedIds.includes(selectedInternship.id)}>
-                {appliedIds.includes(selectedInternship.id) ? 'Already Applied' : 'Confirm Application'}
+              <Button
+                variant="outline"
+                onClick={() => setSelectedInternship(null)}
+              >
+                Close
+              </Button>
+
+              <Button
+                onClick={() => handleApply(selectedInternship)}
+                disabled={appliedIds.includes(selectedInternship.id)}
+              >
+                {appliedIds.includes(selectedInternship.id)
+                  ? "Already Applied"
+                  : "Confirm Application"}
               </Button>
             </DialogFooter>
           </DialogContent>

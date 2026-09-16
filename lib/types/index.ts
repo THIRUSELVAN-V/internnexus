@@ -131,24 +131,39 @@ export interface Internship {
 
 export interface Application {
   id: string;
+
   internshipId: string;
   internshipTitle: string;
+
   companyId: string;
   companyName: string;
+
   studentId: string;
   studentName: string;
   studentEmail: string;
+
   resumeURL: string;
   coverLetter?: string;
+
   status: ApplicationStatus;
+
+  // Existing resume AI analysis
   aiAnalysis?: ResumeAnalysis;
+
+  // AI candidate-internship matching result
+  candidateMatch?: CandidateMatch;
+
+  // Existing matching fields
   matchScore?: number;
   matchedSkills?: string[];
   missingSkills?: string[];
   matchReasoning?: string;
+
   hrNotes?: string;
+
   appliedAt: string;
   updatedAt: string;
+
   mentorId?: string;
   mentorName?: string;
 }

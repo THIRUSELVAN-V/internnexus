@@ -1,44 +1,64 @@
-import type { CandidateMatch } from '@/lib/types';
+import type { CandidateMatch } from "@/lib/types";
+import { getFirebaseAuth } from "@/lib/firebase/config";
 
 export async function matchCandidateWithInternship(
   candidateSkills: string[],
   internshipRequirements: string[],
-  applicationId: string = 'app-1',
-  internshipId: string = 'int-1',
-  studentId: string = 'std-1'
+  applicationId: string = "app-1",
+  internshipId: string = "int-1",
+  studentId: string = "std-1",
 ): Promise<CandidateMatch> {
-  await new Promise((res) => setTimeout(res, 800));
+  // These parameters are kept for compatibility with existing callers.
+  void candidateSkills;
+  void internshipRequirements;
+  void internshipId;
+  void studentId;
 
-  const candidateSkillsLower = candidateSkills.map((s) => s.toLowerCase());
-  const matchedSkills: string[] = [];
-  const missingSkills: string[] = [];
+  const auth = getFirebaseAuth();
+  const user = auth.currentUser;
 
-  internshipRequirements.forEach((req) => {
-    if (candidateSkillsLower.some((s) => s.includes(req.toLowerCase()) || req.toLowerCase().includes(s))) {
-      matchedSkills.push(req);
-    } else {
-      missingSkills.push(req);
-    }
-  });
+  if (!user) {
+    throw new Error("You must be logged in to perform candidate matching.");
+  }
 
-  const matchRatio = internshipRequirements.length > 0 ? matchedSkills.length / internshipRequirements.length : 0.85;
-  const matchScore = Math.min(100, Math.max(40, Math.round(matchRatio * 100)));
+  const token = await user.getIdToken(true);
 
-  let recommendation: CandidateMatch['recommendation'] = 'good_match';
-  if (matchScore >= 80) recommendation = 'strong_match';
-  else if (matchScore >= 60) recommendation = 'good_match';
-  else if (matchScore >= 40) recommendation = 'partial_match';
-  else recommendation = 'weak_match';
+  let response: Response;
 
-  return {
-    applicationId,
-    internshipId,
-    studentId,
-    matchScore,
-    matchedSkills,
-    missingSkills,
-    reasoning: `The candidate possesses ${matchedSkills.length} out of ${internshipRequirements.length} required key technical skills. Demonstrated strong experience with ${matchedSkills.slice(0, 3).join(', ')}. ${missingSkills.length > 0 ? `Missing skills in ${missingSkills.join(', ')} can be bridged with onboarding.` : 'Covers all primary requirements.'}`,
-    recommendation,
-    analyzedAt: new Date().toISOString(),
+  try {
+    response = await fetch("/api/ai/candidate-match", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        applicationId,
+      }),
+    });
+  } catch (error) {
+    console.error("Candidate matching API request failed:", error);
+
+    throw new Error("Unable to connect to the AI candidate matching service.");
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    match?: CandidateMatch;
+    error?: string;
   };
+
+  if (!response.ok) {
+    console.error("Candidate matching API failed:", response.status, payload);
+
+    throw new Error(
+      payload.error ?? `Candidate matching failed (HTTP ${response.status}).`,
+    );
+  }
+
+  if (!payload.match) {
+    throw new Error("The AI did not return a candidate matching result.");
+  }
+
+  return payload.match;
 }
