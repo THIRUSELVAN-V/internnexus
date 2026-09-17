@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments } from '@/lib/firebase/firestore';
 import { MentorAssignment, Task, Application, StudentProfile } from '@/lib/types';
+import { DUMMY_MENTEES } from '@/lib/utils/constants';
 
 interface MenteeRow {
   id: string;
@@ -64,16 +65,16 @@ export default function MentorStudentsPage() {
           };
         });
 
-        if (!rows || rows.length === 0) {
-          rows = [
-            { id: '1', studentId: 'std-1', name: 'Thiru', role: 'Frontend Web Development Intern', university: 'IIT Madras', tasksDone: '12 / 15', progress: 80, rating: 4.8 },
-            { id: '2', studentId: 'std-2', name: 'Priya Sharma', role: 'Full Stack Engineering Intern', university: 'BITS Pilani', tasksDone: '14 / 16', progress: 88, rating: 5.0 },
-          ];
+        if (!rows || rows.length < 10) {
+          const existingIds = new Set(rows.map((r) => r.studentId));
+          const missingDummies = DUMMY_MENTEES.filter((d) => !existingIds.has(d.studentId));
+          rows = [...rows, ...missingDummies];
         }
 
         setMentees(rows);
       } catch (err) {
         console.error('Error fetching mentees:', err);
+        setMentees(DUMMY_MENTEES);
       } finally {
         setLoading(false);
       }

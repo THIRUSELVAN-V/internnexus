@@ -10,7 +10,7 @@ import {
   Settings, Building2, Briefcase, Users, UserCheck, Activity,
   BarChart3, Sparkles, Inbox, MessageSquare, Star,
   ShieldCheck, FileBarChart, X, ChevronLeft, ChevronRight,
-  Zap,
+  Zap, FolderGit2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils/formatters';
 import type { UserRole } from '@/lib/types';
@@ -24,7 +24,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   GraduationCap, CheckSquare, Upload, TrendingUp, Award,
   Settings, Building2, Briefcase, Users, UserCheck, Activity,
   BarChart3, Sparkles, Inbox, MessageSquare, Star,
-  ShieldCheck, FileBarChart,
+  ShieldCheck, FileBarChart, FolderGit2,
 };
 
 const ROLE_NAV: Record<UserRole, typeof STUDENT_NAV_ITEMS> = {

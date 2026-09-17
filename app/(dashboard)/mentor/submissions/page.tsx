@@ -9,8 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Check, X, Sparkles, FileText, Download, Loader2, Star, CheckCircle2 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { getDocuments, updateDocument } from '@/lib/firebase/firestore';
-import { Submission, SubmissionAnalysis } from '@/lib/types';
+import { getDocuments, getDocument, updateDocument, createDocument } from '@/lib/firebase/firestore';
+import { Submission, SubmissionAnalysis, Task, Project } from '@/lib/types';
 import { analyzeSubmission } from '@/lib/ai/submissionAnalysis';
 
 export default function MentorSubmissionsPage() {
@@ -64,6 +64,50 @@ export default function MentorSubmissionsPage() {
           status: updatedStatus,
           updatedAt: new Date().toISOString(),
         });
+
+        // Automatic Sequential Task Unlocking logic if task belongs to a multi-phase project
+        if (status === 'approved') {
+          try {
+            const taskDoc = await getDocument<Task>('tasks', selectedSubmission.taskId);
+            if (taskDoc?.projectId && taskDoc?.stepIndex) {
+              const projectDoc = await getDocument<Project>('projects', taskDoc.projectId);
+              if (projectDoc?.aiRoadmap && projectDoc.aiRoadmap.length > 0) {
+                const nextStepIndex = taskDoc.stepIndex + 1;
+                const nextPhase = projectDoc.aiRoadmap.find((p) => p.stepIndex === nextStepIndex);
+                if (nextPhase) {
+                  // Create next sequential task for this student mentee
+                  const nextTaskData: Omit<Task, 'id'> = {
+                    internshipId: taskDoc.internshipId,
+                    mentorId: taskDoc.mentorId,
+                    studentId: selectedSubmission.studentId,
+                    studentName: selectedSubmission.studentName,
+                    title: nextPhase.title,
+                    description: nextPhase.description,
+                    instructions: nextPhase.instructions,
+                    week: nextPhase.stepIndex,
+                    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    status: 'pending',
+                    aiGenerated: true,
+                    projectId: projectDoc.id,
+                    stepIndex: nextPhase.stepIndex,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                  };
+                  await createDocument('tasks', nextTaskData);
+
+                  // Update project mentee progress tracker
+                  const updatedStepMap = { ...(projectDoc.currentStepIndex || {}), [selectedSubmission.studentId]: nextStepIndex };
+                  await updateDocument('projects', projectDoc.id, {
+                    currentStepIndex: updatedStepMap,
+                    updatedAt: new Date().toISOString(),
+                  });
+                }
+              }
+            }
+          } catch (autoUnlockErr) {
+            console.error('Error auto-unlocking next sequential task:', autoUnlockErr);
+          }
+        }
       }
 
       setDecision(status);

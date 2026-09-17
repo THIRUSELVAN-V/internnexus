@@ -112,6 +112,7 @@ export const HR_NAV_ITEMS = [
 export const MENTOR_NAV_ITEMS = [
   { label: 'Dashboard', href: '/mentor/dashboard', icon: 'LayoutDashboard' },
   { label: 'My Students', href: '/mentor/students', icon: 'Users' },
+  { label: 'My Projects', href: '/mentor/projects', icon: 'FolderGit2' },
   { label: 'AI Task Generator', href: '/mentor/task-generator', icon: 'Sparkles' },
   { label: 'Task Management', href: '/mentor/tasks', icon: 'CheckSquare' },
   { label: 'Submissions', href: '/mentor/submissions', icon: 'Inbox' },
@@ -129,3 +130,17 @@ export const ADMIN_NAV_ITEMS = [
   { label: 'Reports', href: '/admin/reports', icon: 'FileBarChart' },
   { label: 'Settings', href: '/admin/settings', icon: 'Settings' },
 ];
+
+export const DUMMY_MENTEES = [
+  { id: 'std-1', studentId: 'std-1', name: 'Alex Rivera', role: 'Full Stack Web Development Intern', university: 'IIT Madras', tasksDone: '12 / 15', progress: 80, rating: 4.8 },
+  { id: 'std-2', studentId: 'std-2', name: 'Priya Sharma', role: 'Frontend React Engineering Intern', university: 'BITS Pilani', tasksDone: '14 / 16', progress: 88, rating: 5.0 },
+  { id: 'std-3', studentId: 'std-3', name: 'Rohan Verma', role: 'Backend Node.js Systems Intern', university: 'NIT Trichy', tasksDone: '10 / 14', progress: 71, rating: 4.6 },
+  { id: 'std-4', studentId: 'std-4', name: 'Ananya Iyer', role: 'AI & Machine Learning Intern', university: 'IIIT Hyderabad', tasksDone: '15 / 15', progress: 100, rating: 4.9 },
+  { id: 'std-5', studentId: 'std-5', name: 'David K. Chen', role: 'Cloud Architecture & DevOps Intern', university: 'VIT Vellore', tasksDone: '9 / 12', progress: 75, rating: 4.5 },
+  { id: 'std-6', studentId: 'std-6', name: 'Sneha Reddy', role: 'Mobile App Engineering Intern', university: 'SRM Institute', tasksDone: '11 / 14', progress: 78, rating: 4.7 },
+  { id: 'std-7', studentId: 'std-7', name: 'Marcus Vance', role: 'Data Science & Analytics Intern', university: 'IIT Bombay', tasksDone: '13 / 15', progress: 86, rating: 4.9 },
+  { id: 'std-8', studentId: 'std-8', name: 'Kavya Patel', role: 'UI/UX Design & Frontend Intern', university: 'NIFT Delhi', tasksDone: '8 / 10', progress: 80, rating: 4.6 },
+  { id: 'std-9', studentId: 'std-9', name: 'Rahul Deshmukh', role: 'Cybersecurity Engineering Intern', university: 'COEP Pune', tasksDone: '10 / 12', progress: 83, rating: 4.8 },
+  { id: 'std-10', studentId: 'std-10', name: 'Thiru Selvan', role: 'Full Stack Software Intern', university: 'Anna University', tasksDone: '14 / 15', progress: 93, rating: 5.0 },
+];
+

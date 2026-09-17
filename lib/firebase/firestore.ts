@@ -27,6 +27,7 @@ export const collections = {
   internships: 'internships',
   applications: 'applications',
   mentorAssignments: 'mentorAssignments',
+  projects: 'projects',
   tasks: 'tasks',
   submissions: 'submissions',
   feedback: 'feedback',

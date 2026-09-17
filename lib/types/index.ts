@@ -187,11 +187,48 @@ export interface Task {
   dueDate: string;
   status: TaskStatus;
   aiGenerated: boolean;
+  projectId?: string;
+  stepIndex?: number;
   resources?: string[];
   tags?: string[];
   createdAt: string;
   updatedAt: string;
   submissionId?: string;
+}
+
+// ─── Project ──────────────────────────────────────────────────────────────────
+
+export interface ProjectTaskRoadmap {
+  stepIndex: number;
+  title: string;
+  description: string;
+  instructions: string;
+  estimatedHours: number;
+  resources: string[];
+  tags: string[];
+  priority?: 'HIGH' | 'MEDIUM' | 'LOW';
+  suggestedMenteeId?: string;
+  suggestedMenteeName?: string;
+  matchReasoning?: string;
+  dependencies?: string[];
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  domain: string;
+  description: string;
+  mentorId: string;
+  mentorName: string;
+  companyId?: string;
+  companyName?: string;
+  assignedMenteeIds: string[];
+  assignedMenteeNames: string[];
+  status: 'planning' | 'active' | 'completed';
+  aiRoadmap?: ProjectTaskRoadmap[];
+  currentStepIndex?: Record<string, number>; // studentId -> current unlocked step index
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── Submission ───────────────────────────────────────────────────────────────
