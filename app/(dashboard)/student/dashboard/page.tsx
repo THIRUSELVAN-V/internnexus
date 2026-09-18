@@ -14,15 +14,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments } from '@/lib/firebase/firestore';
-import { Application, Task, MentorAssignment, Certificate } from '@/lib/types';
+import { Application, Task, MentorAssignment, Certificate, StudentProfile } from '@/lib/types';
+import { getStudentLifecycleState, calculateTaskProgress } from '@/lib/utils/constants';
 
 export default function StudentDashboardPage() {
   const { profile } = useAuthContext();
+  const student = profile as StudentProfile;
   const [loading, setLoading] = useState(true);
   const [applications, setApplications] = useState<Application[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [mentorAssignment, setMentorAssignment] = useState<MentorAssignment | null>(null);
   const [hasCert, setHasCert] = useState(false);
+  const [certCount, setCertCount] = useState(0);
 
   useEffect(() => {
     async function fetchStudentDashboard() {
@@ -35,15 +38,16 @@ export default function StudentDashboardPage() {
           getDocuments<Certificate>('certificates'),
         ]);
 
-        const myApps = profile?.uid ? appDocs.filter((a) => a.studentId === profile.uid) : appDocs;
-        const myTasks = profile?.uid ? taskDocs.filter((t) => t.studentId === profile.uid) : taskDocs;
-        const myMentor = mentorDocs.find((m) => m.studentId === profile?.uid) || mentorDocs[0] || null;
-        const myCert = certDocs.some((c) => c.studentId === profile?.uid);
+        const myApps = profile?.uid ? appDocs.filter((a) => a.studentId === profile.uid) : [];
+        const myTasks = profile?.uid ? taskDocs.filter((t) => t.studentId === profile.uid) : [];
+        const myMentor = profile?.uid ? mentorDocs.find((m) => m.studentId === profile.uid) || null : null;
+        const myCerts = profile?.uid ? certDocs.filter((c) => c.studentId === profile.uid) : [];
 
         setApplications(myApps);
         setTasks(myTasks);
         setMentorAssignment(myMentor);
-        setHasCert(myCert);
+        setHasCert(myCerts.length > 0);
+        setCertCount(myCerts.length);
       } catch (err) {
         console.error('Error loading student dashboard:', err);
       } finally {
@@ -54,16 +58,23 @@ export default function StudentDashboardPage() {
     fetchStudentDashboard();
   }, [profile]);
 
-  const completedTasks = tasks.filter((t) => t.status === 'approved').length;
-  const totalTasks = tasks.length || 4;
-  const topMatch = applications.length > 0 ? Math.max(...applications.map((a) => a.matchScore || 0)) : 94;
+  const taskStats = calculateTaskProgress(tasks);
+  const lifecycle = getStudentLifecycleState({
+    applications,
+    mentorAssignment,
+    certificates: hasCert ? ([{ id: '1' }] as Certificate[]) : [],
+  });
 
-  const chartData = [
-    { week: 'W1', completed: Math.min(completedTasks, 2), total: 2 },
-    { week: 'W2', completed: Math.min(completedTasks, 3), total: 3 },
-    { week: 'W3', completed: Math.min(completedTasks, 4), total: 4 },
-    { week: 'W4', completed: completedTasks, total: totalTasks },
-  ];
+  const nextTask = tasks.find((t) => t.status !== 'approved');
+
+  const chartData = [1, 2, 3, 4].map((w) => {
+    const weekTasks = tasks.filter((t) => t.week === w);
+    return {
+      week: `W${w}`,
+      completed: weekTasks.filter((t) => t.status === 'approved').length,
+      total: weekTasks.length,
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -97,7 +108,7 @@ export default function StudentDashboardPage() {
             <StatsCard
               title="Applications"
               value={`${applications.length}`}
-              change={`${applications.filter((a) => a.status === 'mentor_assigned' || a.status === 'hr_shortlisted').length} Active`}
+              change={`${applications.filter((a) => a.status === 'mentor_assigned' || a.status === 'accepted' || a.status === 'hr_shortlisted').length} Active`}
               trend="up"
               description="Submitted applications"
               icon={Briefcase}
@@ -106,19 +117,25 @@ export default function StudentDashboardPage() {
             />
             <StatsCard
               title="Completed Tasks"
-              value={`${completedTasks} / ${totalTasks}`}
-              change={`${Math.round((completedTasks / totalTasks) * 100)}% Done`}
-              trend="up"
+              value={tasks.length > 0 ? `${taskStats.completed} / ${taskStats.total}` : '0 Tasks'}
+              change={tasks.length > 0 ? `${taskStats.percentage}% Done` : 'Awaiting assignment'}
+              trend={taskStats.percentage > 0 ? 'up' : 'neutral'}
               description="Assigned task progress"
               icon={CheckSquare}
               iconColor="text-green-600"
               iconBg="bg-green-50"
             />
             <StatsCard
-              title="Top AI Match Score"
-              value={`${topMatch}%`}
-              change="Strong Candidate Match"
-              trend="up"
+              title="AI Profile Status"
+              value={
+                applications.length > 0
+                  ? `${Math.max(...applications.map((a) => a.matchScore || 0))}% Match`
+                  : student?.resumeAnalyzed
+                  ? 'Analyzed'
+                  : 'Pending Resume'
+              }
+              change={student?.resumeAnalyzed ? 'Resume AI Extracted' : 'Upload resume for matching'}
+              trend={student?.resumeAnalyzed ? 'up' : 'neutral'}
               description="Skill compatibility index"
               icon={Brain}
               iconColor="text-purple-600"
@@ -126,10 +143,10 @@ export default function StudentDashboardPage() {
             />
             <StatsCard
               title="Certificates"
-              value={hasCert ? '1 Ready' : 'Pending Tasks'}
-              change={hasCert ? 'Ready to download' : 'Complete 100% tasks'}
-              trend={hasCert ? 'up' : 'neutral'}
-              description="Verified completion certificate"
+              value={certCount > 0 ? `${certCount} Issued` : '0 Issued'}
+              change={certCount > 0 ? 'Ready to download' : 'Issued on completion'}
+              trend={certCount > 0 ? 'up' : 'neutral'}
+              description="Verified completion credential"
               icon={Award}
               iconColor="text-amber-600"
               iconBg="bg-amber-50"
@@ -138,29 +155,89 @@ export default function StudentDashboardPage() {
 
           {/* Main Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left 2 Cols: Progress & Recent Applications */}
+            {/* Left 2 Cols: Progress / Lifecycle Guide & Recent Applications */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Chart */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <div>
-                    <CardTitle className="text-base font-bold text-slate-900">Task Completion Velocity</CardTitle>
-                    <p className="text-xs text-slate-500">Weekly breakdown of completed vs assigned tasks</p>
-                  </div>
-                  <Badge variant="outline" className="text-xs font-semibold">Active Cohort</Badge>
-                </CardHeader>
-                <CardContent>
-                  <CustomBarChart
-                    data={chartData}
-                    xAxisKey="week"
-                    dataKeys={[
-                      { key: 'completed', name: 'Completed', color: '#2563EB' },
-                      { key: 'total', name: 'Total Assigned', color: '#E2E8F0' },
-                    ]}
-                    height={260}
-                  />
-                </CardContent>
-              </Card>
+              {tasks.length > 0 ? (
+                /* Real Task Completion Velocity Chart */
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <div>
+                      <CardTitle className="text-base font-bold text-slate-900">Task Completion Velocity</CardTitle>
+                      <p className="text-xs text-slate-500">Weekly breakdown of completed vs assigned deliverables</p>
+                    </div>
+                    <Badge variant="outline" className="text-xs font-semibold">Current Cohort</Badge>
+                  </CardHeader>
+                  <CardContent>
+                    <CustomBarChart
+                      data={chartData}
+                      xAxisKey="week"
+                      dataKeys={[
+                        { key: 'completed', name: 'Completed', color: '#2563EB' },
+                        { key: 'total', name: 'Total Assigned', color: '#E2E8F0' },
+                      ]}
+                      height={260}
+                    />
+                  </CardContent>
+                </Card>
+              ) : (
+                /* Lifecycle Status Guide Card for State 1-4 */
+                <Card className="border-blue-100 bg-gradient-to-r from-blue-50/50 to-indigo-50/30">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
+                          Lifecycle Status: {lifecycle.replace('_', ' ')}
+                        </span>
+                        <h3 className="text-base font-bold text-slate-900">
+                          {lifecycle === 'new'
+                            ? 'Welcome to Your Internship Journey'
+                            : lifecycle === 'applied'
+                            ? 'Application Under Review by HR'
+                            : lifecycle === 'shortlisted'
+                            ? 'Congratulations, You Are Shortlisted!'
+                            : lifecycle === 'selected'
+                            ? 'Candidate Selected — Mentor Assignment Underway'
+                            : 'Internship Active'}
+                        </h3>
+                        <p className="text-xs text-slate-600 max-w-lg leading-relaxed">
+                          {lifecycle === 'new'
+                            ? 'Get started by checking your profile, extracting skills from your resume, and browsing available internships across companies.'
+                            : lifecycle === 'applied'
+                            ? 'Your application has been received. Company talent teams are evaluating candidate profiles and match scores.'
+                            : lifecycle === 'shortlisted'
+                            ? 'Your credentials match company requirements. HR contacts are now unlocked in your applications tab.'
+                            : lifecycle === 'selected'
+                            ? 'HR has selected your application. An industrial mentor is being matched to guide your project deliverables.'
+                            : 'Your mentorship workspace is initialized. Check your tasks tab for upcoming weekly deliverables.'}
+                        </p>
+
+                        <div className="pt-2 flex flex-wrap gap-2">
+                          {lifecycle === 'new' && (
+                            <>
+                              <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs">
+                                <Link href="/student/internships">Browse Internships</Link>
+                              </Button>
+                              <Button asChild size="sm" variant="outline" className="text-xs">
+                                <Link href="/student/resume">Resume &amp; AI Analysis</Link>
+                              </Button>
+                            </>
+                          )}
+                          {lifecycle === 'applied' && (
+                            <Button asChild size="sm" variant="outline" className="text-xs">
+                              <Link href="/student/applications">Track Application Status</Link>
+                            </Button>
+                          )}
+                          {lifecycle === 'shortlisted' && (
+                            <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs">
+                              <Link href="/student/applications">View Shortlisted Role &amp; HR</Link>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Active Applications */}
               <Card>
@@ -194,8 +271,11 @@ export default function StudentDashboardPage() {
                       </div>
                     ))
                   ) : (
-                    <div className="py-6 text-center text-xs text-slate-500 italic">
-                      No active applications found. Click Browse Internships above to apply!
+                    <div className="py-8 text-center space-y-2">
+                      <p className="text-xs text-slate-500">You have not applied for any internships yet.</p>
+                      <Button asChild size="sm" variant="outline" className="text-xs">
+                        <Link href="/student/internships">Browse Open Roles</Link>
+                      </Button>
                     </div>
                   )}
                 </CardContent>
@@ -205,53 +285,91 @@ export default function StudentDashboardPage() {
             {/* Right 1 Col: Mentor & Next Steps */}
             <div className="space-y-6">
               {/* Assigned Mentor Card */}
-              <Card className="border-indigo-100 bg-gradient-to-b from-white to-indigo-50/30 shadow-sm">
-                <CardHeader className="pb-2">
-                  <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">Assigned Industrial Mentor</span>
-                  <CardTitle className="text-base font-bold text-slate-900 mt-1">
-                    {mentorAssignment?.mentorName || 'Mr. Vijay'}
-                  </CardTitle>
-                  <p className="text-xs text-slate-500">Corporate Lead Architect · TechCorp</p>
-                </CardHeader>
-                <CardContent className="space-y-3 pt-2">
-                  <div className="rounded-xl bg-white p-3 border border-slate-200 text-xs space-y-1.5">
-                    <div className="flex justify-between text-slate-600">
-                      <span>Mentorship Domain:</span>
-                      <span className="font-semibold text-slate-900">Software Engineering</span>
+              {mentorAssignment ? (
+                <Card className="border-indigo-100 bg-gradient-to-b from-white to-indigo-50/30 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">Assigned Industrial Mentor</span>
+                    <CardTitle className="text-base font-bold text-slate-900 mt-1">
+                      {mentorAssignment.mentorName}
+                    </CardTitle>
+                    <p className="text-xs text-slate-500">Corporate Mentorship Active</p>
+                  </CardHeader>
+                  <CardContent className="space-y-3 pt-2">
+                    <div className="rounded-xl bg-white p-3 border border-slate-200 text-xs space-y-1.5">
+                      <div className="flex justify-between text-slate-600">
+                        <span>Assignment Status:</span>
+                        <span className="font-semibold text-green-700 capitalize">{mentorAssignment.status}</span>
+                      </div>
+                      {mentorAssignment.startDate && (
+                        <div className="flex justify-between text-slate-600">
+                          <span>Started:</span>
+                          <span className="font-semibold text-slate-900">{mentorAssignment.startDate}</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex justify-between text-slate-600">
-                      <span>Weekly Check-in:</span>
-                      <span className="font-semibold text-slate-900">Fridays, 4:00 PM</span>
-                    </div>
-                  </div>
-                  <Button asChild className="w-full bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 font-semibold" size="sm">
-                    <Link href="/student/mentor">Contact Mentor</Link>
-                  </Button>
-                </CardContent>
-              </Card>
+                    <Button asChild className="w-full bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 font-semibold" size="sm">
+                      <Link href="/student/mentor">Contact Mentor</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="border-slate-200 bg-slate-50/50 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Industrial Mentor</span>
+                    <CardTitle className="text-sm font-bold text-slate-700 mt-1">
+                      No Mentor Assigned Yet
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-1">
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      An industrial mentor will be assigned by HR once your application is selected.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Next Task Due */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider flex items-center gap-1">
-                      <Clock className="h-3.5 w-3.5" /> Next Task Due
+              {nextTask ? (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5" /> Next Task Due
+                      </span>
+                      <Badge variant="warning" className="text-xs font-semibold capitalize">
+                        {nextTask.status.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-sm font-bold text-slate-900 mt-1">
+                      Week {nextTask.week}: {nextTask.title}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 pt-1">
+                    <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
+                      {nextTask.description}
+                    </p>
+                    <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold" size="sm">
+                      <Link href="/student/tasks">Submit Deliverables <ArrowRight className="h-3.5 w-3.5 ml-1" /></Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5" /> Tasks
                     </span>
-                    <Badge variant="warning" className="text-xs font-semibold">In Progress</Badge>
-                  </div>
-                  <CardTitle className="text-sm font-bold text-slate-900 mt-1">
-                    Week 3: API Integration & State Management
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 pt-1">
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Connect dashboard UI components to backend REST endpoints and handle async state gracefully.
-                  </p>
-                  <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold" size="sm">
-                    <Link href="/student/tasks">Submit Deliverables <ArrowRight className="h-3.5 w-3.5 ml-1" /></Link>
-                  </Button>
-                </CardContent>
-              </Card>
+                    <CardTitle className="text-sm font-bold text-slate-700 mt-1">
+                      No Pending Tasks
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-1">
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      You do not have any pending tasks right now. Once your mentor publishes tasks, deadlines will appear here.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
         </>

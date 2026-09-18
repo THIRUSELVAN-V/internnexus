@@ -10,41 +10,58 @@ import { Badge } from '@/components/ui/badge';
 import { Building2, Globe, MapPin, CheckCircle2, Save, Loader2, Check } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments, setDocument, updateDocument } from '@/lib/firebase/firestore';
+import { updateUserProfile } from '@/lib/firebase/auth';
 import { Company, HRProfile } from '@/lib/types';
 
 export default function HRCompanyPage() {
-  const { profile } = useAuthContext();
-  const hr = profile as HRProfile;
+  const { profile, refreshProfile } = useAuthContext();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  const [companyId, setCompanyId] = useState<string>('comp-techcorp');
-  const [name, setName] = useState('TechCorp India');
-  const [industry, setIndustry] = useState('Software & IT Services');
-  const [website, setWebsite] = useState('https://techcorp.example.com');
-  const [location, setLocation] = useState('Bangalore, Karnataka, India');
-  const [size, setSize] = useState<Company['size']>('medium');
-  const [description, setDescription] = useState('TechCorp India is a leading enterprise cloud software vendor providing scalable SaaS solutions to global Fortune 500 clients.');
+  // Clean empty state for new HR
+  const [companyId, setCompanyId] = useState<string>('');
+  const [name, setName] = useState('');
+  const [industry, setIndustry] = useState('');
+  const [website, setWebsite] = useState('');
+  const [location, setLocation] = useState('');
+  const [size, setSize] = useState<Company['size']>('startup');
+  const [description, setDescription] = useState('');
   const [status, setStatus] = useState<Company['status']>('approved');
 
   useEffect(() => {
     async function fetchCompany() {
+      if (!profile?.uid) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
+        const hr = profile as HRProfile;
         const companies = await getDocuments<Company>('companies');
-        const myComp = companies.find((c) => c.hrId === profile?.uid || c.name.toLowerCase().includes('techcorp')) || companies[0];
+        const myComp = companies.find((c) => c.hrId === profile.uid || (hr?.companyId && c.id === hr.companyId));
 
         if (myComp) {
           setCompanyId(myComp.id);
-          setName(myComp.name);
-          setIndustry(myComp.industry);
-          setWebsite(myComp.website || 'https://techcorp.example.com');
-          setLocation(myComp.location || 'Bangalore, India');
-          setSize(myComp.size || 'medium');
+          setName(myComp.name || '');
+          setIndustry(myComp.industry || '');
+          setWebsite(myComp.website || '');
+          setLocation(myComp.location || '');
+          setSize(myComp.size || 'startup');
           setDescription(myComp.description || '');
           setStatus(myComp.status || 'approved');
+        } else {
+          // Brand new HR: clean empty state
+          const generatedId = hr?.companyId || `comp-${profile.uid.slice(0, 8)}`;
+          setCompanyId(generatedId);
+          setName(hr?.companyName || '');
+          setIndustry('');
+          setWebsite('');
+          setLocation('');
+          setSize('startup');
+          setDescription('');
+          setStatus('approved');
         }
       } catch (err) {
         console.error('Error fetching company details:', err);
@@ -57,9 +74,11 @@ export default function HRCompanyPage() {
   }, [profile]);
 
   const handleSave = async () => {
+    if (!profile?.uid) return;
     setSaving(true);
     setSavedSuccess(false);
     try {
+      const targetCompId = companyId || `comp-${profile.uid.slice(0, 8)}`;
       const companyData: Partial<Company> = {
         name,
         industry,
@@ -67,12 +86,24 @@ export default function HRCompanyPage() {
         location,
         size,
         description,
-        hrId: profile?.uid || 'hr-1',
-        hrName: profile?.displayName || 'HR Manager',
+        hrId: profile.uid,
+        hrName: profile.displayName || 'HR Manager',
+        status: status || 'approved',
         updatedAt: new Date().toISOString(),
       };
 
-      await setDocument('companies', companyId, companyData);
+      await setDocument('companies', targetCompId, companyData);
+
+      // Update HR user profile with company information
+      await updateUserProfile(profile.uid, {
+        companyId: targetCompId,
+        companyName: name,
+      } as Partial<HRProfile>);
+
+      if (refreshProfile) {
+        await refreshProfile();
+      }
+
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch (err) {
@@ -111,7 +142,9 @@ export default function HRCompanyPage() {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base font-bold text-slate-900">{name} Details</CardTitle>
+            <CardTitle className="text-base font-bold text-slate-900">
+              {name ? `${name} Details` : 'Register Enterprise Details'}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

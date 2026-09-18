@@ -9,14 +9,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
   Eye, EyeOff, Zap, Mail, Lock, User as UserIcon, ChevronRight,
-  GraduationCap, Building2, UserCheck, Shield,
+  GraduationCap, Building2, UserCheck, Shield, FileText, Upload, Sparkles, AlertCircle, Loader2, CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { signUp } from '@/lib/firebase/auth';
+import { signUp, updateUserProfile } from '@/lib/firebase/auth';
+import { analyzeResume } from '@/lib/ai/resumeAnalysis';
 import { cn } from '@/lib/utils/formatters';
-import type { UserRole } from '@/lib/types';
+import type { UserRole, StudentProfile } from '@/lib/types';
 
 const schema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -42,6 +43,12 @@ export default function RegisterPage() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [warningMessage, setWarningMessage] = useState('');
+
+  // Resume upload state (students only)
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState('');
+  const [processingStage, setProcessingStage] = useState<string | null>(null);
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<RegisterForm>({
     resolver: zodResolver(schema),
@@ -52,16 +59,77 @@ export default function RegisterPage() {
     setStep(2);
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setFileError('');
+    if (!file) {
+      setResumeFile(null);
+      return;
+    }
+
+    const nameLower = file.name.toLowerCase();
+    const isValidType = nameLower.endsWith('.pdf') || nameLower.endsWith('.docx') || nameLower.endsWith('.doc');
+
+    if (!isValidType) {
+      setFileError('Invalid file format. Please select a PDF or DOCX file.');
+      setResumeFile(null);
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setFileError('File size exceeds 5MB limit.');
+      setResumeFile(null);
+      return;
+    }
+
+    setResumeFile(file);
+  };
+
   const onSubmit = async (data: RegisterForm) => {
     if (!role) return;
     setError('');
+    setWarningMessage('');
+    setProcessingStage(null);
+
     try {
-      await signUp(data.email, data.password, data.displayName, role);
-      router.push(`/${role}/dashboard`);
+      // 1. Create Firebase Auth user & basic profile
+      setProcessingStage('Creating user account...');
+      const userProfile = await signUp(data.email, data.password, data.displayName, role);
+
+      // 2. If Student with uploaded resume, analyze resume without storing binary file
+      if (role === 'student' && resumeFile && userProfile?.uid) {
+        try {
+          setProcessingStage('Reading resume document...');
+          await new Promise((res) => setTimeout(res, 300));
+
+          setProcessingStage('Analyzing technical skills with AI...');
+          const analysis = await analyzeResume(resumeFile);
+
+          setProcessingStage('Saving structured profile to Firestore...');
+          await updateUserProfile(userProfile.uid, {
+            resumeAnalysis: analysis,
+            skills: analysis.skills || [],
+            resumeAnalyzed: true,
+            resumeAnalyzedAt: new Date().toISOString(),
+          } as Partial<StudentProfile>);
+
+        } catch (resumeErr: unknown) {
+          console.error('Resume AI analysis failed during registration:', resumeErr);
+          setWarningMessage('Account created! Resume analysis failed, but you can retry anytime from your Student Profile.');
+          await new Promise((res) => setTimeout(res, 2200));
+        }
+      }
+
+      setProcessingStage('Registration completed! Redirecting...');
+      setTimeout(() => {
+        router.push(`/${role}/dashboard`);
+      }, 800);
+
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Registration failed';
       if (msg.includes('email-already-in-use')) setError('An account with this email already exists.');
       else setError(msg);
+      setProcessingStage(null);
     }
   };
 
@@ -173,11 +241,60 @@ export default function RegisterPage() {
                     </div>
                   </div>
 
+                  {/* Student Resume Upload Field */}
+                  {role === 'student' && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <Label htmlFor="student-resume" className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                        <Sparkles className="h-3.5 w-3.5 text-purple-600" />
+                        Upload Resume for AI Skill Extraction (Optional)
+                      </Label>
+                      <p className="text-[11px] text-slate-500 mb-2">
+                        PDF or DOCX format (Max 5MB). File is processed in memory for skill analysis and never stored.
+                      </p>
+
+                      <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer border border-slate-200 transition-colors">
+                          <Upload className="h-3.5 w-3.5 text-slate-600" />
+                          <span>{resumeFile ? 'Change Resume' : 'Choose Resume'}</span>
+                          <input
+                            id="student-resume"
+                            type="file"
+                            accept=".pdf,.docx,.doc"
+                            onChange={handleFileChange}
+                            className="hidden"
+                          />
+                        </label>
+                        {resumeFile && (
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-purple-900 bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-xl truncate">
+                            <FileText className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+                            <span className="truncate max-w-[200px]">{resumeFile.name}</span>
+                          </div>
+                        )}
+                      </div>
+                      {fileError && <p className="text-xs text-red-600 mt-1 font-medium">{fileError}</p>}
+                    </div>
+                  )}
+
+                  {/* Processing Status Banner */}
+                  {processingStage && (
+                    <div className="rounded-xl bg-purple-50 border border-purple-200 p-3 flex items-center gap-2 text-xs font-semibold text-purple-900 animate-in fade-in">
+                      <Loader2 className="h-4 w-4 text-purple-600 animate-spin shrink-0" />
+                      <span>{processingStage}</span>
+                    </div>
+                  )}
+
+                  {warningMessage && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800 font-medium flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                      <span>{warningMessage}</span>
+                    </div>
+                  )}
+
                   {error && (
                     <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm text-red-700">{error}</div>
                   )}
 
-                  <Button type="submit" className="w-full mt-2" size="lg" loading={isSubmitting}>
+                  <Button type="submit" className="w-full mt-2" size="lg" loading={isSubmitting || Boolean(processingStage)}>
                     Create Account
                   </Button>
 

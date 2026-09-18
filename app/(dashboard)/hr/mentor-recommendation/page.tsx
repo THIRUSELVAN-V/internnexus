@@ -8,10 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { CheckCircle2, UserCheck, Loader2 } from 'lucide-react';
 import { getDocuments, createDocument, updateDocument } from '@/lib/firebase/firestore';
 import { recommendMentors } from '@/lib/ai/mentorRecommend';
-import type { MentorRecommendation, Application, MentorAssignment, UserProfile } from '@/lib/types';
+import type { MentorRecommendation, Application, MentorAssignment, UserProfile, MentorProfile, Internship } from '@/lib/types';
 import { useSearchParams } from 'next/navigation';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { filterHRInternships, filterHRApplications } from '@/lib/utils/hr';
 
 export default function HRMentorRecommendationPage() {
+  const { profile } = useAuthContext();
   const searchParams = useSearchParams();
   const applicantId = searchParams.get('applicantId');
 
@@ -25,24 +28,36 @@ export default function HRMentorRecommendationPage() {
 
   useEffect(() => {
     async function loadRecommendationData() {
+      if (!profile?.uid) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
-        const [appDocs, userDocs, assignmentDocs] = await Promise.all([
+        const [appDocs, userDocs, internDocs] = await Promise.all([
           getDocuments<Application>('applications'),
           getDocuments<UserProfile>('users'),
-          getDocuments<MentorAssignment>('mentorAssignments'),
+          getDocuments<Internship>('internships'),
         ]);
 
+        const myInternships = filterHRInternships(internDocs, profile);
+        const myApps = filterHRApplications(appDocs, myInternships, profile);
+
         const currentApp = applicantId
-          ? appDocs.find((a) => a.id === applicantId) || appDocs[0]
-          : appDocs[0] || null;
+          ? myApps.find((a) => a.id === applicantId) || null
+          : myApps.length > 0
+          ? myApps[0]
+          : null;
 
         setApplication(currentApp);
 
         if (currentApp) {
+          const mentorUsers = userDocs.filter((u) => u.role === 'mentor') as MentorProfile[];
+
           const recs = await recommendMentors(
             currentApp.internshipTitle || 'Web Development',
-            currentApp.matchedSkills || ['React', 'TypeScript']
+            currentApp.matchedSkills || ['React', 'TypeScript'],
+            mentorUsers
           );
           setRecommendations(recs);
 
@@ -58,14 +73,14 @@ export default function HRMentorRecommendationPage() {
     }
 
     loadRecommendationData();
-  }, [applicantId]);
+  }, [applicantId, profile]);
 
   const handleConfirmAssignment = async () => {
     if (!application || !selectedMentorId) return;
     setAssigning(true);
     try {
       const selectedMentor = recommendations.find((m) => m.mentorId === selectedMentorId);
-      const mentorName = selectedMentor ? selectedMentor.mentorName : 'Mr. Vijay';
+      const mentorName = selectedMentor ? selectedMentor.mentorName : 'Assigned Mentor';
 
       const newAssignment: Omit<MentorAssignment, 'id'> = {
         internshipId: application.internshipId,
@@ -137,7 +152,7 @@ export default function HRMentorRecommendationPage() {
                 </p>
               </CardContent>
             </Card>
-          ) : (
+          ) : recommendations.length > 0 ? (
             <>
               <MentorRecommendationCard
                 recommendations={recommendations}
@@ -160,6 +175,12 @@ export default function HRMentorRecommendationPage() {
                 </Button>
               </div>
             </>
+          ) : (
+            <Card className="border-dashed border-slate-200 bg-slate-50/50">
+              <CardContent className="py-12 text-center text-xs text-slate-500">
+                No mentors registered in the system yet. Please register industrial mentor accounts to enable AI mentor recommendations.
+              </CardContent>
+            </Card>
           )}
         </div>
       ) : (

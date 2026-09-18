@@ -6,12 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Search, MapPin, Building2, Clock, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
+import { Search, MapPin, Building2, Clock, Sparkles, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 import CandidateMatchCard from '@/components/ai/CandidateMatchCard';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments, createDocument } from '@/lib/firebase/firestore';
 import { matchCandidateWithInternship } from '@/lib/ai/candidateMatch';
 import { Internship, Application, StudentProfile } from '@/lib/types';
+import { hasActiveInternship, getActiveApplication } from '@/lib/utils/constants';
 
 export default function BrowseInternshipsPage() {
   const { profile } = useAuthContext();
@@ -134,9 +135,10 @@ export default function BrowseInternshipsPage() {
     fetchData();
   }, [profile]);
 
-  const studentAppliedIds = applications
-    .filter((a) => a.studentId === profile?.uid)
-    .map((a) => a.internshipId);
+  const myApplications = applications.filter((a) => a.studentId === profile?.uid);
+  const studentAppliedIds = myApplications.map((a) => a.internshipId);
+  const studentHasActiveInternship = hasActiveInternship(myApplications);
+  const activeApp = getActiveApplication(myApplications);
 
   const filtered = internships.filter((item) =>
     item.title.toLowerCase().includes(query.toLowerCase()) ||
@@ -146,6 +148,10 @@ export default function BrowseInternshipsPage() {
 
   const handleApply = async (internship: Internship) => {
     if (!profile?.uid) return;
+    if (studentHasActiveInternship) {
+      alert('You already have an active internship. You can apply for another internship after completing the current internship.');
+      return;
+    }
     setApplyingId(internship.id);
     try {
       const matchInfo = matches[internship.id];
@@ -158,7 +164,7 @@ export default function BrowseInternshipsPage() {
         studentId: profile.uid,
         studentName: profile.displayName || 'Student',
         studentEmail: profile.email || '',
-        resumeURL: student?.resumeURL || 'https://storage.googleapis.com/demo/resume.pdf',
+        resumeURL: student?.resumeURL || '',
         status: 'ai_reviewed',
         matchScore: matchInfo?.matchScore || 85,
         matchedSkills: matchInfo?.matchedSkills || [],
@@ -180,6 +186,19 @@ export default function BrowseInternshipsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Active Internship Warning Banner */}
+      {studentHasActiveInternship && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900 flex items-start gap-3 shadow-sm">
+          <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+          <div className="space-y-0.5">
+            <p className="font-bold text-amber-950 text-sm">Active Internship in Progress</p>
+            <p className="text-amber-800 leading-relaxed">
+              You already have an active internship ({activeApp?.internshipTitle} at {activeApp?.companyName}).
+              You can apply for another internship after completing the current internship.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Browse Open Internships</h1>
@@ -248,9 +267,16 @@ export default function BrowseInternshipsPage() {
                   </Button>
                   <Button
                     size="sm"
-                    disabled={isApplied || applyingId === item.id}
+                    disabled={isApplied || applyingId === item.id || studentHasActiveInternship}
                     onClick={() => handleApply(item)}
-                    className={isApplied ? 'bg-green-600 hover:bg-green-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}
+                    title={studentHasActiveInternship ? 'You already have an active internship.' : undefined}
+                    className={
+                      isApplied
+                        ? 'bg-green-600 hover:bg-green-600 text-white'
+                        : studentHasActiveInternship
+                        ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed hover:bg-slate-100'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    }
                   >
                     {applyingId === item.id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -258,6 +284,8 @@ export default function BrowseInternshipsPage() {
                       <>
                         <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Applied
                       </>
+                    ) : studentHasActiveInternship ? (
+                      'Apply Disabled'
                     ) : (
                       'Apply Now'
                     )}
@@ -310,10 +338,18 @@ export default function BrowseInternshipsPage() {
               </Button>
               <Button
                 onClick={() => handleApply(selectedInternship)}
-                disabled={studentAppliedIds.includes(selectedInternship.id) || applyingId === selectedInternship.id}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={studentAppliedIds.includes(selectedInternship.id) || applyingId === selectedInternship.id || studentHasActiveInternship}
+                className={
+                  studentHasActiveInternship
+                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed hover:bg-slate-200'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }
               >
-                {studentAppliedIds.includes(selectedInternship.id) ? 'Already Applied' : 'Confirm Application'}
+                {studentAppliedIds.includes(selectedInternship.id)
+                  ? 'Already Applied'
+                  : studentHasActiveInternship
+                  ? 'Active Internship in Progress'
+                  : 'Confirm Application'}
               </Button>
             </DialogFooter>
           </DialogContent>

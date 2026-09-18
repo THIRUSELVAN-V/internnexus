@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Sparkles, Eye, UserCheck, Check, X, Loader2 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments, updateDocument } from '@/lib/firebase/firestore';
-import { Application } from '@/lib/types';
+import { Application, Internship } from '@/lib/types';
+import { filterHRInternships, filterHRApplications } from '@/lib/utils/hr';
 
 export default function HRApplicantsPage() {
   const { profile } = useAuthContext();
@@ -19,8 +20,15 @@ export default function HRApplicantsPage() {
   const fetchApplicants = async () => {
     setLoading(true);
     try {
-      const docs = await getDocuments<Application>('applications');
-      setApplications(docs);
+      const [appDocs, internDocs] = await Promise.all([
+        getDocuments<Application>('applications'),
+        getDocuments<Internship>('internships'),
+      ]);
+
+      const myInternships = filterHRInternships(internDocs, profile);
+      const myApps = filterHRApplications(appDocs, myInternships, profile);
+
+      setApplications(myApps);
     } catch (err) {
       console.error('Error fetching applicants:', err);
     } finally {
@@ -29,7 +37,11 @@ export default function HRApplicantsPage() {
   };
 
   useEffect(() => {
-    fetchApplicants();
+    if (profile?.uid) {
+      fetchApplicants();
+    } else {
+      setLoading(false);
+    }
   }, [profile]);
 
   const handleShortlist = async (appId: string) => {
@@ -167,7 +179,7 @@ export default function HRApplicantsPage() {
               columns={columns}
               searchKey="studentName"
               searchPlaceholder="Search applicants by name..."
-              emptyMessage="No applicants found in system database."
+              emptyMessage="No applications received yet."
             />
           )}
         </CardContent>

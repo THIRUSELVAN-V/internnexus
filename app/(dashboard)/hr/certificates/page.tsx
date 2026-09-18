@@ -8,15 +8,21 @@ import { Button } from '@/components/ui/button';
 import { Award, CheckCircle2, Loader2 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments, createDocument } from '@/lib/firebase/firestore';
-import { Certificate, MentorAssignment, Application } from '@/lib/types';
+import { Certificate, MentorAssignment, Application, Internship, HRProfile } from '@/lib/types';
+import { filterHRInternships, filterHRAssignments, filterHRCertificates, filterHRApplications } from '@/lib/utils/hr';
 
 interface CertRow {
   id: string;
+  internshipId: string;
+  companyId: string;
   studentId: string;
   studentName: string;
   role: string;
   companyName: string;
+  mentorId: string;
   mentorName: string;
+  startDate: string;
+  endDate: string;
   issueDate: string;
   status: 'ready' | 'issued';
 }
@@ -28,36 +34,48 @@ export default function HRCertificatesPage() {
   const [issuingId, setIssuingId] = useState<string | null>(null);
 
   const fetchCertificatesData = async () => {
+    if (!profile?.uid) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const [assignments, certDocs, applications] = await Promise.all([
+      const [assignments, certDocs, applications, internships] = await Promise.all([
         getDocuments<MentorAssignment>('mentorAssignments'),
         getDocuments<Certificate>('certificates'),
         getDocuments<Application>('applications'),
+        getDocuments<Internship>('internships'),
       ]);
 
-      let rows: CertRow[] = assignments.map((assign) => {
-        const app = applications.find((a) => a.studentId === assign.studentId);
-        const isIssued = certDocs.some((c) => c.studentId === assign.studentId);
+      const myInternships = filterHRInternships(internships, profile);
+      const myAssignments = filterHRAssignments(assignments, myInternships, profile);
+      const myCertDocs = filterHRCertificates(certDocs, myInternships, profile);
+      const myApps = filterHRApplications(applications, myInternships, profile);
+
+      const hr = profile as HRProfile;
+      const hrCompany = hr?.companyName || (profile.displayName ? `${profile.displayName}'s Organization` : 'Company');
+
+      const rows: CertRow[] = myAssignments.map((assign) => {
+        const app = myApps.find((a) => a.studentId === assign.studentId && a.internshipId === assign.internshipId) ||
+                    myApps.find((a) => a.studentId === assign.studentId);
+        const isIssued = myCertDocs.some((c) => c.studentId === assign.studentId && c.internshipId === assign.internshipId);
 
         return {
           id: assign.id,
+          internshipId: assign.internshipId || app?.internshipId || '',
+          companyId: assign.companyId || hr?.companyId || '',
           studentId: assign.studentId,
-          studentName: assign.studentName,
-          role: app?.internshipTitle || 'Frontend Web Development Intern',
-          companyName: assign.companyId || 'TechCorp India',
-          mentorName: assign.mentorName,
+          studentName: assign.studentName || 'Student',
+          role: app?.internshipTitle || 'Intern',
+          companyName: app?.companyName || hrCompany,
+          mentorId: assign.mentorId || '',
+          mentorName: assign.mentorName || 'Assigned Mentor',
+          startDate: assign.startDate || app?.appliedAt || new Date().toISOString().slice(0, 10),
+          endDate: assign.endDate || new Date().toISOString().slice(0, 10),
           issueDate: new Date().toISOString().slice(0, 10),
           status: isIssued ? 'issued' : 'ready',
         };
       });
-
-      if (!rows || rows.length === 0) {
-        rows = [
-          { id: '1', studentId: 'std-1', studentName: 'Thiru', role: 'Frontend Web Development Intern', companyName: 'TechCorp India', mentorName: 'Mr. Vijay', issueDate: '2026-08-04', status: 'ready' },
-          { id: '2', studentId: 'std-2', studentName: 'Priya Sharma', role: 'Full Stack Engineering Intern', companyName: 'TechCorp India', mentorName: 'Ananya Deshmukh', issueDate: '2026-07-30', status: 'issued' },
-        ];
-      }
 
       setCertRows(rows);
     } catch (err) {
@@ -75,26 +93,26 @@ export default function HRCertificatesPage() {
     setIssuingId(item.id);
     try {
       const newCert: Omit<Certificate, 'id'> = {
-        internshipId: 'int-1',
+        internshipId: item.internshipId,
         internshipTitle: item.role,
-        companyId: 'comp-techcorp',
-        companyName: 'TechCorp India',
+        companyId: item.companyId,
+        companyName: item.companyName,
         studentId: item.studentId,
         studentName: item.studentName,
-        mentorId: 'men-1',
+        mentorId: item.mentorId,
         mentorName: item.mentorName,
-        startDate: '2026-07-15',
-        endDate: '2026-10-15',
+        startDate: item.startDate,
+        endDate: item.endDate,
         completionDate: new Date().toISOString().slice(0, 10),
         overallRating: 5.0,
         status: 'issued',
-        certificateURL: `https://storage.googleapis.com/certificates/CERT-${item.studentId.slice(0, 6)}.pdf`,
+        certificateURL: `https://storage.googleapis.com/certificates/CERT-${item.studentId.slice(0, 6).toUpperCase()}-${Date.now()}.pdf`,
         issuedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       };
 
       await createDocument('certificates', newCert);
-      fetchCertificatesData();
+      await fetchCertificatesData();
     } catch (err) {
       console.error('Error issuing certificate:', err);
     } finally {
@@ -171,7 +189,13 @@ export default function HRCertificatesPage() {
               <span className="ml-3 text-xs text-slate-500 font-medium">Fetching evaluated interns...</span>
             </div>
           ) : (
-            <DataTable data={certRows} columns={columns} searchKey="studentName" searchPlaceholder="Search student..." />
+            <DataTable
+              data={certRows}
+              columns={columns}
+              searchKey="studentName"
+              searchPlaceholder="Search student..."
+              emptyMessage="No evaluated interns found for certificate issuance."
+            />
           )}
         </CardContent>
       </Card>

@@ -13,9 +13,15 @@ import { Upload, Sparkles, CheckCircle2, Star, Loader2, FileText } from 'lucide-
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments, createDocument } from '@/lib/firebase/firestore';
 
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { updateDocument } from '@/lib/firebase/firestore';
+import type { Task } from '@/lib/types';
+
 export default function StudentSubmissionsPage() {
   const { profile } = useAuthContext();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   const [analyzing, setAnalyzing] = useState(false);
@@ -23,14 +29,27 @@ export default function StudentSubmissionsPage() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [notes, setNotes] = useState('');
 
-  const fetchSubmissions = async () => {
+  const fetchSubmissionsData = async () => {
     setLoading(true);
     try {
-      const docs = await getDocuments<Submission>('submissions');
+      const [subDocs, taskDocs] = await Promise.all([
+        getDocuments<Submission>('submissions'),
+        getDocuments<Task>('tasks'),
+      ]);
+
       const mySubmissions = profile?.uid
-        ? docs.filter((s) => s.studentId === profile.uid)
-        : docs;
+        ? subDocs.filter((s) => s.studentId === profile.uid)
+        : [];
       setSubmissions(mySubmissions);
+
+      const myTasks = profile?.uid
+        ? taskDocs.filter((t) => t.studentId === profile.uid)
+        : [];
+      setTasks(myTasks);
+
+      if (myTasks.length > 0) {
+        setSelectedTaskId(myTasks[0].id);
+      }
 
       if (mySubmissions.length > 0 && mySubmissions[0].aiAnalysis) {
         setAnalysis(mySubmissions[0].aiAnalysis);
@@ -43,7 +62,7 @@ export default function StudentSubmissionsPage() {
   };
 
   useEffect(() => {
-    fetchSubmissions();
+    fetchSubmissionsData();
   }, [profile]);
 
   const handleFileSelect = async (file: File) => {
@@ -60,16 +79,19 @@ export default function StudentSubmissionsPage() {
   };
 
   const handleNewSubmission = async () => {
-    if (!uploadedFile || !profile?.uid) return;
+    if (!uploadedFile || !profile?.uid || !selectedTaskId) return;
+    const taskObj = tasks.find((t) => t.id === selectedTaskId);
+    if (!taskObj) return;
+
     try {
       const newSub: Omit<Submission, 'id'> = {
-        taskId: 'tsk-3',
-        taskTitle: 'API Integration & State Management',
-        internshipId: 'int-1',
+        taskId: taskObj.id,
+        taskTitle: taskObj.title,
+        internshipId: taskObj.internshipId,
         studentId: profile.uid,
         studentName: profile.displayName || 'Student',
-        mentorId: 'men-1',
-        fileURLs: [`https://storage.googleapis.com/demo/${uploadedFile.name}`],
+        mentorId: taskObj.mentorId,
+        fileURLs: [uploadedFile.name],
         fileTypes: [uploadedFile.name.endsWith('.pdf') ? 'pdf' : 'zip'],
         description: notes || 'Task deliverable submission with AI analysis.',
         status: 'submitted',
@@ -79,9 +101,14 @@ export default function StudentSubmissionsPage() {
       };
 
       await createDocument('submissions', newSub);
+      await updateDocument('tasks', taskObj.id, {
+        status: 'submitted',
+        updatedAt: new Date().toISOString(),
+      });
+
       setUploadedFile(null);
       setNotes('');
-      fetchSubmissions();
+      fetchSubmissionsData();
     } catch (err) {
       console.error('Error creating submission:', err);
     }
@@ -101,6 +128,26 @@ export default function StudentSubmissionsPage() {
             <CardTitle className="text-sm font-bold text-slate-900">Submit New Deliverable</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {tasks.length > 0 ? (
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">Select Assigned Task</label>
+                <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
+                  <SelectTrigger><SelectValue placeholder="Choose task" /></SelectTrigger>
+                  <SelectContent>
+                    {tasks.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        Week {t.week}: {t.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 text-center">
+                No active tasks assigned yet. Submissions will be unlocked when your mentor assigns a task.
+              </div>
+            )}
+
             <FileUpload
               label="Upload Code / Report"
               description="PDF, ZIP or TS files (Max 25MB)"
@@ -127,7 +174,7 @@ export default function StudentSubmissionsPage() {
 
             <Button
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-              disabled={!uploadedFile || analyzing}
+              disabled={!uploadedFile || analyzing || !selectedTaskId || tasks.length === 0}
               onClick={handleNewSubmission}
             >
               <Upload className="h-4 w-4 mr-1.5" /> Submit to Mentor

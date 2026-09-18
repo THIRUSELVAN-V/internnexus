@@ -8,7 +8,8 @@ import { Progress } from '@/components/ui/progress';
 import { Loader2 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments } from '@/lib/firebase/firestore';
-import { MentorAssignment, Task, Application } from '@/lib/types';
+import { MentorAssignment, Task, Application, Internship } from '@/lib/types';
+import { filterHRInternships, filterHRAssignments } from '@/lib/utils/hr';
 
 interface InternRow {
   id: string;
@@ -28,41 +29,43 @@ export default function HRInternsPage() {
 
   useEffect(() => {
     async function fetchActiveInterns() {
+      if (!profile?.uid) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
-        const [assignments, tasks, applications] = await Promise.all([
+        const [assignments, tasks, applications, internships] = await Promise.all([
           getDocuments<MentorAssignment>('mentorAssignments'),
           getDocuments<Task>('tasks'),
           getDocuments<Application>('applications'),
+          getDocuments<Internship>('internships'),
         ]);
 
-        let rows: InternRow[] = assignments.map((assign) => {
+        const myInternships = filterHRInternships(internships, profile);
+        const myAssignments = filterHRAssignments(assignments, myInternships, profile);
+
+        const rows: InternRow[] = myAssignments.map((assign) => {
           const studentTasks = tasks.filter((t) => t.studentId === assign.studentId);
           const completedCount = studentTasks.filter((t) => t.status === 'approved').length;
-          const totalCount = studentTasks.length || 4;
-          const pct = Math.round((completedCount / totalCount) * 100);
+          const totalCount = studentTasks.length;
+          const pct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-          const app = applications.find((a) => a.studentId === assign.studentId);
+          const app = applications.find(
+            (a) => a.studentId === assign.studentId && a.internshipId === assign.internshipId
+          ) || applications.find((a) => a.studentId === assign.studentId);
 
           return {
             id: assign.id,
             studentId: assign.studentId,
             name: assign.studentName,
-            role: app?.internshipTitle || 'Frontend Web Development Intern',
+            role: app?.internshipTitle || 'Intern',
             mentorName: assign.mentorName,
-            startDate: assign.startDate || '2026-07-15',
+            startDate: assign.startDate || '-',
             progress: pct,
             tasksCompleted: `${completedCount} / ${totalCount}`,
           };
         });
-
-        // Fallback default rows if collection empty
-        if (!rows || rows.length === 0) {
-          rows = [
-            { id: '1', studentId: 'std-1', name: 'Thiru', role: 'Frontend Web Development Intern', mentorName: 'Mr. Vijay', startDate: '2026-07-15', progress: 75, tasksCompleted: '12 / 15' },
-            { id: '2', studentId: 'std-2', name: 'Priya Sharma', role: 'Full Stack Engineering Intern', mentorName: 'Ananya Deshmukh', startDate: '2026-07-01', progress: 85, tasksCompleted: '14 / 16' },
-          ];
-        }
 
         setInternRows(rows);
       } catch (err) {
@@ -135,7 +138,13 @@ export default function HRInternsPage() {
               <span className="ml-3 text-xs text-slate-500 font-medium">Fetching active intern cohorts...</span>
             </div>
           ) : (
-            <DataTable data={internRows} columns={columns} searchKey="name" searchPlaceholder="Search active interns..." />
+            <DataTable
+              data={internRows}
+              columns={columns}
+              searchKey="name"
+              searchPlaceholder="Search active interns..."
+              emptyMessage="No active interns found."
+            />
           )}
         </CardContent>
       </Card>

@@ -14,7 +14,9 @@ import { Plus, Edit, Trash2, Loader2 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments, createDocument, deleteDocument, updateDocument } from '@/lib/firebase/firestore';
 import { Internship, Application } from '@/lib/types';
-import { INTERNSHIP_DOMAINS, INTERNSHIP_MODES } from '@/lib/utils/constants';
+import { INTERNSHIP_DOMAINS } from '@/lib/utils/constants';
+import { filterHRInternships, filterHRApplications } from '@/lib/utils/hr';
+import { HRProfile } from '@/lib/types';
 
 export default function HRInternshipsPage() {
   const { profile } = useAuthContext();
@@ -26,16 +28,16 @@ export default function HRInternshipsPage() {
   const [openModal, setOpenModal] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
-  // Form Fields
+  // Form Fields - clean empty defaults for new HR
   const [title, setTitle] = useState('');
   const [domain, setDomain] = useState(INTERNSHIP_DOMAINS[0]);
-  const [stipend, setStipend] = useState('25000');
-  const [openings, setOpenings] = useState('5');
-  const [duration, setDuration] = useState('12');
+  const [stipend, setStipend] = useState('');
+  const [openings, setOpenings] = useState('1');
+  const [duration, setDuration] = useState('8');
   const [mode, setMode] = useState<'remote' | 'onsite' | 'hybrid'>('remote');
-  const [location, setLocation] = useState('Remote / Bangalore');
+  const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
-  const [skillsInput, setSkillsInput] = useState('React, TypeScript, Tailwind CSS, Git');
+  const [skillsInput, setSkillsInput] = useState('');
 
   const fetchInternshipsData = async () => {
     setLoading(true);
@@ -45,8 +47,11 @@ export default function HRInternshipsPage() {
         getDocuments<Application>('applications'),
       ]);
 
-      setInternships(internDocs);
-      setApplications(appDocs);
+      const myInternships = filterHRInternships(internDocs, profile);
+      const myApplications = filterHRApplications(appDocs, myInternships, profile);
+
+      setInternships(myInternships);
+      setApplications(myApplications);
     } catch (err) {
       console.error('Error fetching internships:', err);
     } finally {
@@ -55,32 +60,44 @@ export default function HRInternshipsPage() {
   };
 
   useEffect(() => {
-    fetchInternshipsData();
+    if (profile?.uid) {
+      fetchInternshipsData();
+    } else {
+      setLoading(false);
+    }
   }, [profile]);
 
   const handleCreatePosting = async () => {
-    if (!title || !description) return;
+    if (!title || !description || !profile?.uid) return;
     setPublishing(true);
     try {
       const skillsArray = skillsInput.split(',').map((s) => s.trim()).filter(Boolean);
 
+      const hrProfile = profile as HRProfile;
+      const compId = hrProfile.companyId || `comp-${profile.uid.slice(0, 8)}`;
+      const compName = hrProfile.companyName || (profile.displayName ? `${profile.displayName}'s Organization` : 'Company');
+
+      const today = new Date();
+      const deadline = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const startDate = new Date(today.getTime() + 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
       const newPosting: Omit<Internship, 'id'> = {
-        companyId: 'comp-techcorp',
-        companyName: 'TechCorp India',
+        companyId: compId,
+        companyName: compName,
         title,
         domain,
         description,
         requirements: skillsArray,
         skills: skillsArray,
-        duration: parseInt(duration) || 12,
-        stipend: parseInt(stipend) || 25000,
-        location,
+        duration: parseInt(duration) || 8,
+        stipend: stipend ? parseInt(stipend) : 0,
+        location: location || (mode === 'remote' ? 'Remote' : 'On-site'),
         mode,
-        openings: parseInt(openings) || 5,
-        applicationDeadline: '2026-10-31',
-        startDate: '2026-11-01',
+        openings: parseInt(openings) || 1,
+        applicationDeadline: deadline,
+        startDate,
         status: 'active',
-        hrId: profile?.uid || 'hr-1',
+        hrId: profile.uid,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -91,7 +108,12 @@ export default function HRInternshipsPage() {
       // Reset form
       setTitle('');
       setDescription('');
-      fetchInternshipsData();
+      setSkillsInput('');
+      setStipend('');
+      setLocation('');
+      setDuration('8');
+      setOpenings('1');
+      await fetchInternshipsData();
     } catch (err) {
       console.error('Error creating internship posting:', err);
     } finally {
@@ -193,7 +215,7 @@ export default function HRInternshipsPage() {
               columns={columns}
               searchKey="title"
               searchPlaceholder="Search postings by title..."
-              emptyMessage="No internship postings found. Click Post New Internship to create one!"
+              emptyMessage="No internships created yet."
             />
           )}
         </CardContent>

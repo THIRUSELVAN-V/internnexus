@@ -44,11 +44,11 @@ export default function MentorStudentsPage() {
           ? assignments.filter((a) => a.mentorId === profile.uid)
           : assignments;
 
-        let rows: MenteeRow[] = (myAssignments.length > 0 ? myAssignments : assignments).map((assign) => {
+        const rows: MenteeRow[] = myAssignments.map((assign) => {
           const studentTasks = tasks.filter((t) => t.studentId === assign.studentId);
           const completedCount = studentTasks.filter((t) => t.status === 'approved').length;
-          const totalCount = studentTasks.length || 4;
-          const pct = Math.round((completedCount / totalCount) * 100);
+          const totalCount = studentTasks.length;
+          const pct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
           const app = applications.find((a) => a.studentId === assign.studentId);
           const stdUser = users.find((u) => u.uid === assign.studentId);
@@ -57,24 +57,18 @@ export default function MentorStudentsPage() {
             id: assign.id,
             studentId: assign.studentId,
             name: assign.studentName,
-            role: app?.internshipTitle || 'Frontend Web Development Intern',
-            university: stdUser?.university || 'IIT Madras',
+            role: app?.internshipTitle || 'Intern',
+            university: stdUser?.university || '-',
             tasksDone: `${completedCount} / ${totalCount}`,
             progress: pct,
-            rating: 4.8,
+            rating: 5.0,
           };
         });
-
-        if (!rows || rows.length < 10) {
-          const existingIds = new Set(rows.map((r) => r.studentId));
-          const missingDummies = DUMMY_MENTEES.filter((d) => !existingIds.has(d.studentId));
-          rows = [...rows, ...missingDummies];
-        }
 
         setMentees(rows);
       } catch (err) {
         console.error('Error fetching mentees:', err);
-        setMentees(DUMMY_MENTEES);
+        setMentees([]);
       } finally {
         setLoading(false);
       }

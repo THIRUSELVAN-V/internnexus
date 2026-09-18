@@ -1,3 +1,5 @@
+import type { Application, Task, MentorAssignment, Certificate } from '@/lib/types';
+
 export const APP_NAME = 'InternNexus';
 
 export const ROLES = {
@@ -143,4 +145,109 @@ export const DUMMY_MENTEES = [
   { id: 'std-9', studentId: 'std-9', name: 'Rahul Deshmukh', role: 'Cybersecurity Engineering Intern', university: 'COEP Pune', tasksDone: '10 / 12', progress: 83, rating: 4.8 },
   { id: 'std-10', studentId: 'std-10', name: 'Thiru Selvan', role: 'Full Stack Software Intern', university: 'Anna University', tasksDone: '14 / 15', progress: 93, rating: 5.0 },
 ];
+
+/**
+ * Student Internship Lifecycle States:
+ * State 1: 'new' - No applications submitted yet
+ * State 2: 'applied' - Applications submitted, none shortlisted or selected yet
+ * State 3: 'shortlisted' - At least one application has been shortlisted by HR
+ * State 4: 'selected' - Selected/accepted for an internship, awaiting mentor assignment
+ * State 5: 'mentor_assigned' - Mentor assigned, active tasks & submissions underway
+ * State 6: 'completed' - Internship completed, certificate issued
+ */
+export type StudentLifecycleState =
+  | 'new'
+  | 'applied'
+  | 'shortlisted'
+  | 'selected'
+  | 'mentor_assigned'
+  | 'completed';
+
+/**
+ * Statuses that signify an active internship.
+ * While a student has an application with one of these statuses, they cannot apply for any other internship.
+ */
+export const ACTIVE_INTERNSHIP_STATUSES: string[] = ['accepted', 'mentor_assigned'];
+
+/**
+ * Checks if a student currently has an active internship.
+ * A student can have ONLY ONE active internship at a time.
+ */
+export function hasActiveInternship(applications: Application[]): boolean {
+  return applications.some((app) => ACTIVE_INTERNSHIP_STATUSES.includes(app.status));
+}
+
+/**
+ * Returns the student's active application, if any.
+ */
+export function getActiveApplication(applications: Application[]): Application | null {
+  return applications.find((app) => ACTIVE_INTERNSHIP_STATUSES.includes(app.status)) || null;
+}
+
+/**
+ * Derives the student's current lifecycle state from their actual Firestore data.
+ * Does not use any hardcoded defaults or sample data.
+ */
+export function getStudentLifecycleState({
+  applications,
+  mentorAssignment,
+  certificates,
+}: {
+  applications: Application[];
+  mentorAssignment: MentorAssignment | null;
+  certificates: Certificate[];
+}): StudentLifecycleState {
+  const hasActive = applications.some((app) => ACTIVE_INTERNSHIP_STATUSES.includes(app.status));
+  if (certificates.length > 0 && !hasActive) {
+    return 'completed';
+  }
+
+  if (mentorAssignment || applications.some((app) => app.status === 'mentor_assigned')) {
+    return 'mentor_assigned';
+  }
+
+  if (applications.some((app) => app.status === 'accepted')) {
+    return 'selected';
+  }
+
+  if (applications.some((app) => app.status === 'hr_shortlisted')) {
+    return 'shortlisted';
+  }
+
+  if (applications.length > 0) {
+    return 'applied';
+  }
+
+  return 'new';
+}
+
+/**
+ * Calculates real internship progress based purely on assigned tasks.
+ * Returns 0% if no tasks are assigned yet.
+ */
+export function calculateTaskProgress(tasks: Task[]): {
+  total: number;
+  completed: number;
+  inProgress: number;
+  pending: number;
+  percentage: number;
+} {
+  if (!tasks || tasks.length === 0) {
+    return { total: 0, completed: 0, inProgress: 0, pending: 0, percentage: 0 };
+  }
+
+  const completed = tasks.filter((t) => t.status === 'approved').length;
+  const inProgress = tasks.filter((t) => t.status === 'in_progress' || t.status === 'submitted').length;
+  const pending = tasks.filter((t) => t.status === 'pending' || t.status === 'revision_needed').length;
+  const percentage = Math.round((completed / tasks.length) * 100);
+
+  return {
+    total: tasks.length,
+    completed,
+    inProgress,
+    pending,
+    percentage,
+  };
+}
+
 

@@ -8,10 +8,11 @@ import CustomPieChart from '@/components/dashboard/charts/PieChart';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Briefcase, Users, UserCheck, Award, Sparkles, Plus, ArrowRight, Loader2 } from 'lucide-react';
+import { Briefcase, Users, UserCheck, Award, Sparkles, Plus, ArrowRight, Loader2, Inbox } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments } from '@/lib/firebase/firestore';
 import { Internship, Application, MentorAssignment, Certificate } from '@/lib/types';
+import { filterHRInternships, filterHRApplications, filterHRAssignments, filterHRCertificates } from '@/lib/utils/hr';
 
 export default function HRDashboardPage() {
   const { profile } = useAuthContext();
@@ -33,10 +34,15 @@ export default function HRDashboardPage() {
           getDocuments<Certificate>('certificates'),
         ]);
 
-        setInternships(iDocs);
-        setApplications(aDocs);
-        setAssignments(mDocs);
-        setCertificates(certDocs);
+        const myInternships = filterHRInternships(iDocs, profile);
+        const myApplications = filterHRApplications(aDocs, myInternships, profile);
+        const myAssignments = filterHRAssignments(mDocs, myInternships, profile);
+        const myCertificates = filterHRCertificates(certDocs, myInternships, profile);
+
+        setInternships(myInternships);
+        setApplications(myApplications);
+        setAssignments(myAssignments);
+        setCertificates(myCertificates);
       } catch (err) {
         console.error('Error loading HR dashboard:', err);
       } finally {
@@ -44,24 +50,53 @@ export default function HRDashboardPage() {
       }
     }
 
-    fetchHRDashboardData();
+    if (profile?.uid) {
+      fetchHRDashboardData();
+    } else {
+      setLoading(false);
+    }
   }, [profile]);
 
-  const activeListingsCount = internships.filter((i) => i.status === 'active').length || internships.length;
+  // Specific required HR statistics calculated strictly from real Firestore data
+  const totalInternships = internships.length;
+  const applicationsCount = applications.length;
+  const shortlistedCount = applications.filter((a) => a.status === 'hr_shortlisted').length;
+  const selectedCount = applications.filter(
+    (a) => a.status === 'accepted' || a.status === 'mentor_assigned'
+  ).length;
+
   const highMatchApps = applications.filter((a) => (a.matchScore || 0) >= 80);
 
-  const barData = [
-    { role: 'Frontend', applicants: Math.max(1, Math.round(applications.length * 0.4)), shortlisted: Math.max(1, assignments.length) },
-    { role: 'Full Stack', applicants: Math.max(1, Math.round(applications.length * 0.3)), shortlisted: 2 },
-    { role: 'UI/UX', applicants: Math.max(1, Math.round(applications.length * 0.2)), shortlisted: 1 },
-  ];
+  // Dynamic bar data from actual applications
+  const roleMap: Record<string, { applicants: number; shortlisted: number }> = {};
+  applications.forEach((app) => {
+    const role = app.internshipTitle || 'General';
+    if (!roleMap[role]) {
+      roleMap[role] = { applicants: 0, shortlisted: 0 };
+    }
+    roleMap[role].applicants += 1;
+    if (app.status === 'hr_shortlisted' || app.status === 'accepted' || app.status === 'mentor_assigned') {
+      roleMap[role].shortlisted += 1;
+    }
+  });
+
+  const barData = Object.entries(roleMap).map(([role, counts]) => ({
+    role: role.length > 15 ? `${role.slice(0, 15)}...` : role,
+    applicants: counts.applicants,
+    shortlisted: counts.shortlisted,
+  }));
+
+  // Dynamic pie data from actual status counts
+  const underReviewCount = applications.filter((a) => a.status === 'ai_reviewed' || a.status === 'pending').length;
+  const activeInternsCount = assignments.length;
+  const completedCount = certificates.length;
 
   const pieData = [
-    { name: 'Shortlisted', value: applications.filter((a) => a.status === 'hr_shortlisted').length || 2, color: '#2563EB' },
-    { name: 'Under Review', value: applications.filter((a) => a.status === 'ai_reviewed').length || 4, color: '#9333EA' },
-    { name: 'Active Interns', value: assignments.length || 2, color: '#16A34A' },
-    { name: 'Completed', value: certificates.length || 1, color: '#D97706' },
-  ];
+    { name: 'Shortlisted', value: shortlistedCount, color: '#2563EB' },
+    { name: 'Under Review', value: underReviewCount, color: '#9333EA' },
+    { name: 'Active Interns', value: activeInternsCount, color: '#16A34A' },
+    { name: 'Completed', value: completedCount, color: '#D97706' },
+  ].filter((slice) => slice.value > 0);
 
   return (
     <div className="space-y-6">
@@ -90,47 +125,69 @@ export default function HRDashboardPage() {
         </div>
       ) : (
         <>
-          {/* KPI Cards */}
+          {/* Empty state notice if new HR */}
+          {totalInternships === 0 && (
+            <Card className="border-dashed border-purple-200 bg-purple-50/40">
+              <CardContent className="p-6 text-center space-y-2">
+                <div className="h-10 w-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center mx-auto">
+                  <Briefcase className="h-5 w-5" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900">No internships created yet</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Get started by publishing your company&apos;s first internship posting to begin receiving candidate applications.
+                </p>
+                <div className="pt-2">
+                  <Button asChild size="sm" className="bg-purple-600 hover:bg-purple-700 text-white">
+                    <Link href="/hr/internships">
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Create Your First Internship
+                    </Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 4 Required KPI Cards strictly from actual Firestore data */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatsCard
-              title="Active Postings"
-              value={`${activeListingsCount} Open Roles`}
-              change={`${applications.length} Total Applicants`}
-              trend="up"
-              description="Open job listings"
+              title="Total Internships"
+              value={String(totalInternships)}
+              change={totalInternships === 0 ? 'No postings yet' : `${totalInternships} Open Roles`}
+              trend={totalInternships > 0 ? 'up' : 'neutral'}
+              description="Internships published"
               icon={Briefcase}
               iconColor="text-purple-600"
               iconBg="bg-purple-50"
             />
             <StatsCard
-              title="Total Applicants"
-              value={`${applications.length} Applicants`}
-              change={`${highMatchApps.length} High AI Match`}
-              trend="up"
-              description="Candidate pipeline"
+              title="Applications"
+              value={String(applicationsCount)}
+              change={applicationsCount === 0 ? 'No applications yet' : `${highMatchApps.length} High Match`}
+              trend={applicationsCount > 0 ? 'up' : 'neutral'}
+              description="Candidates applied"
               icon={Users}
               iconColor="text-blue-600"
               iconBg="bg-blue-50"
             />
             <StatsCard
-              title="Active Interns"
-              value={`${assignments.length} Active`}
-              change="Mentors Assigned"
-              trend="neutral"
-              description="Current cohort"
+              title="Shortlisted"
+              value={String(shortlistedCount)}
+              change={shortlistedCount === 0 ? 'Awaiting shortlisting' : 'Passed initial review'}
+              trend={shortlistedCount > 0 ? 'up' : 'neutral'}
+              description="Candidates shortlisted"
               icon={UserCheck}
-              iconColor="text-green-600"
-              iconBg="bg-green-50"
+              iconColor="text-indigo-600"
+              iconBg="bg-indigo-50"
             />
             <StatsCard
-              title="Certificates Issued"
-              value={`${certificates.length} Issued`}
-              change="100% Verified"
-              trend="up"
-              description="Graduated interns"
+              title="Selected"
+              value={String(selectedCount)}
+              change={selectedCount === 0 ? 'None selected yet' : `${assignments.length} Mentors Assigned`}
+              trend={selectedCount > 0 ? 'up' : 'neutral'}
+              description="Accepted & Assigned"
               icon={Award}
-              iconColor="text-amber-600"
-              iconBg="bg-amber-50"
+              iconColor="text-green-600"
+              iconBg="bg-green-50"
             />
           </div>
 
@@ -144,15 +201,25 @@ export default function HRDashboardPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <CustomBarChart
-                  data={barData}
-                  xAxisKey="role"
-                  dataKeys={[
-                    { key: 'applicants', name: 'Total Applicants', color: '#9333EA' },
-                    { key: 'shortlisted', name: 'Shortlisted', color: '#2563EB' },
-                  ]}
-                  height={260}
-                />
+                {barData.length > 0 ? (
+                  <CustomBarChart
+                    data={barData}
+                    xAxisKey="role"
+                    dataKeys={[
+                      { key: 'applicants', name: 'Total Applicants', color: '#9333EA' },
+                      { key: 'shortlisted', name: 'Shortlisted', color: '#2563EB' },
+                    ]}
+                    height={260}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[260px] text-center border border-dashed border-slate-200 rounded-xl p-6">
+                    <Inbox className="h-8 w-8 text-slate-300 mb-2" />
+                    <p className="text-xs font-semibold text-slate-700">No application data available yet</p>
+                    <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
+                      Role applicant metrics will populate automatically when candidates apply for your postings.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -162,7 +229,17 @@ export default function HRDashboardPage() {
                 <p className="text-xs text-slate-500">Status breakdown of candidate pipeline</p>
               </CardHeader>
               <CardContent>
-                <CustomPieChart data={pieData} height={260} />
+                {pieData.length > 0 ? (
+                  <CustomPieChart data={pieData} height={260} />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[260px] text-center border border-dashed border-slate-200 rounded-xl p-6">
+                    <Users className="h-8 w-8 text-slate-300 mb-2" />
+                    <p className="text-xs font-semibold text-slate-700">No cohort data available yet</p>
+                    <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
+                      Pipeline distribution across Shortlisted, Review, and Active Interns will display here.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -171,32 +248,45 @@ export default function HRDashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
-                <CardTitle className="text-base font-bold text-slate-900">High AI Match Candidates</CardTitle>
-                <p className="text-xs text-slate-500">Candidates with &gt;80% AI skill compatibility index</p>
+                <CardTitle className="text-base font-bold text-slate-900">Candidate Pipeline</CardTitle>
+                <p className="text-xs text-slate-500">Recent applicants for your posted internships</p>
               </div>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/hr/applicants">
-                  View All Applicants <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                </Link>
-              </Button>
+              {applications.length > 0 && (
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/hr/applicants">
+                    View All Applicants <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                  </Link>
+                </Button>
+              )}
             </CardHeader>
-            <CardContent className="divide-y divide-slate-100">
-              {applications.slice(0, 4).map((cand) => (
-                <div key={cand.id} className="py-3.5 flex items-center justify-between gap-3 first:pt-0 last:pb-0">
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-900">{cand.studentName}</h4>
-                    <p className="text-xs text-slate-500">{cand.internshipTitle} · {cand.studentEmail}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="purple" className="text-xs font-semibold">
-                      <Sparkles className="h-3 w-3 mr-1 text-purple-600" /> {cand.matchScore || 85}% Match
-                    </Badge>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={`/hr/applicants/${cand.id}`}>Review Candidate</Link>
-                    </Button>
-                  </div>
+            <CardContent>
+              {applications.length === 0 ? (
+                <div className="py-10 text-center space-y-2">
+                  <p className="text-xs font-medium text-slate-500">No applications received yet.</p>
+                  <p className="text-[11px] text-slate-400">
+                    When students apply to your internships, their profiles and AI match scores will appear here.
+                  </p>
                 </div>
-              ))}
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {applications.slice(0, 4).map((cand) => (
+                    <div key={cand.id} className="py-3.5 flex items-center justify-between gap-3 first:pt-0 last:pb-0">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">{cand.studentName}</h4>
+                        <p className="text-xs text-slate-500">{cand.internshipTitle} · {cand.studentEmail}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge variant="purple" className="text-xs font-semibold">
+                          <Sparkles className="h-3 w-3 mr-1 text-purple-600" /> {cand.matchScore || 85}% Match
+                        </Badge>
+                        <Button size="sm" variant="outline" asChild>
+                          <Link href={`/hr/applicants/${cand.id}`}>Review Candidate</Link>
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </>

@@ -26,7 +26,9 @@ export default function StudentMentorPage() {
           getDocuments<UserProfile>('users'),
         ]);
 
-        const myAssignment = assignments.find((a) => a.studentId === profile?.uid) || assignments[0] || null;
+        const myAssignment = profile?.uid
+          ? assignments.find((a) => a.studentId === profile.uid) || null
+          : null;
         setAssignment(myAssignment);
 
         if (myAssignment) {
@@ -65,23 +67,29 @@ export default function StudentMentorPage() {
               <Avatar className="h-20 w-20 border-4 border-white shadow-md mx-auto">
                 <AvatarImage src={mentorUser?.photoURL} />
                 <AvatarFallback className="text-lg font-bold text-indigo-700 bg-indigo-100">
-                  {getInitials(assignment.mentorName || 'MV')}
+                  {getInitials(assignment.mentorName || 'IM')}
                 </AvatarFallback>
               </Avatar>
 
               <div>
                 <h2 className="text-base font-bold text-slate-900">{assignment.mentorName}</h2>
-                <p className="text-xs text-indigo-600 font-medium">{mentorUser?.designation || 'Principal Software Architect'}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{mentorUser?.companyName || 'TechCorp India'}</p>
+                <p className="text-xs text-indigo-600 font-medium">{mentorUser?.designation || 'Industrial Mentor'}</p>
+                {mentorUser?.companyName && (
+                  <p className="text-xs text-slate-500 mt-0.5">{mentorUser.companyName}</p>
+                )}
               </div>
 
               <div className="pt-3 border-t border-slate-100 space-y-2 text-xs text-slate-600 text-left">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-indigo-500 shrink-0" /> {mentorUser?.email || 'mentor@demo.com'}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-indigo-500 shrink-0" /> {mentorUser?.companyName || 'TechCorp'}
-                </div>
+                {mentorUser?.email && (
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-indigo-500 shrink-0" /> {mentorUser.email}
+                  </div>
+                )}
+                {mentorUser?.companyName && (
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-indigo-500 shrink-0" /> {mentorUser.companyName}
+                  </div>
+                )}
               </div>
 
               <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs">
@@ -104,26 +112,32 @@ export default function StudentMentorPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1">
-                  <span className="text-slate-400 font-medium">Mentorship Domain</span>
-                  <p className="font-semibold text-slate-900">Software & Web Engineering</p>
+                  <span className="text-slate-400 font-medium">Assignment Date</span>
+                  <p className="font-semibold text-slate-900">
+                    {assignment.startDate ? new Date(assignment.startDate).toLocaleDateString() : 'Active'}
+                  </p>
                 </div>
                 <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1">
-                  <span className="text-slate-400 font-medium">Weekly Check-in</span>
-                  <p className="font-semibold text-slate-900">Fridays @ 4:00 PM IST</p>
+                  <span className="text-slate-400 font-medium">Status</span>
+                  <p className="font-semibold text-slate-900 capitalize">
+                    {assignment.status || 'Active'}
+                  </p>
                 </div>
               </div>
 
               {/* Mentor Expertise */}
-              <div className="space-y-1.5">
-                <span className="text-xs font-bold text-slate-700">Mentor Focus Areas & Expertise</span>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {(mentorUser?.expertise || ['Web Architecture', 'React Ecosystem', 'API Design', 'Clean Code']).map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-100">
-                      {tag}
-                    </Badge>
-                  ))}
+              {mentorUser?.expertise && mentorUser.expertise.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold text-slate-700">Mentor Focus Areas & Expertise</span>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {mentorUser.expertise.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-100">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Mentorship Guidelines */}
               <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl text-xs space-y-2">
@@ -132,7 +146,7 @@ export default function StudentMentorPage() {
                 </span>
                 <ul className="list-disc list-inside text-indigo-800 space-y-1 leading-relaxed">
                   <li>Your mentor posts weekly technical tasks and learning objectives.</li>
-                  <li>Submit your code/deliverables by the due date for AI & mentor evaluation.</li>
+                  <li>Submit your code/deliverables by the due date for evaluation.</li>
                   <li>Request feedback or revision through the task submission tab.</li>
                 </ul>
               </div>

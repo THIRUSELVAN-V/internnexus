@@ -43,6 +43,8 @@ export interface StudentProfile extends UserProfile {
   gpa?: number;
   resumeURL?: string;
   resumeAnalysis?: ResumeAnalysis;
+  resumeAnalyzed?: boolean;
+  resumeAnalyzedAt?: string;
   linkedinURL?: string;
   githubURL?: string;
   portfolioURL?: string;
@@ -317,9 +319,15 @@ export interface ResumeAnalysis {
   skills: string[];
   technicalSkills: string[];
   softSkills: string[];
+  programmingLanguages?: string[];
+  frameworks?: string[];
+  technologies?: string[];
+  tools?: string[];
+  domains?: string[];
   education: {
     degree: string;
     institution: string;
+    field?: string;
     year?: number;
     gpa?: number;
   }[];

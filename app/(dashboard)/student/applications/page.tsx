@@ -22,7 +22,7 @@ export default function StudentApplicationsPage() {
       const allApps = await getDocuments<Application>('applications');
       const studentApps = profile?.uid
         ? allApps.filter((a) => a.studentId === profile.uid)
-        : allApps;
+        : [];
       setApplications(studentApps);
     } catch (err) {
       console.error('Error fetching applications:', err);
@@ -97,11 +97,32 @@ export default function StudentApplicationsPage() {
       },
     },
     {
+      key: 'hrAccess',
+      header: 'HR Contact',
+      render: (item) => {
+        const isAccessible =
+          item.status === 'hr_shortlisted' ||
+          item.status === 'accepted' ||
+          item.status === 'mentor_assigned';
+
+        return isAccessible ? (
+          <div className="text-xs">
+            <span className="font-semibold text-slate-900 block">{item.companyName} Talent Acquisition</span>
+            <span className="text-[11px] text-blue-600 font-mono">Verified HR Contact</span>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-400 italic">Visible once shortlisted</span>
+        );
+      },
+    },
+    {
       key: 'mentorName',
       header: 'Assigned Mentor',
       render: (item) =>
         item.mentorName ? (
           <span className="text-xs font-semibold text-slate-800">{item.mentorName}</span>
+        ) : item.status === 'accepted' ? (
+          <span className="text-xs text-amber-600 font-medium">Being assigned by HR</span>
         ) : (
           <span className="text-xs text-slate-400 italic">Not assigned yet</span>
         ),
@@ -111,21 +132,23 @@ export default function StudentApplicationsPage() {
       header: 'Actions',
       render: (item) => (
         <div className="flex items-center gap-2">
-          {item.status === 'mentor_assigned' || item.status === 'accepted' ? (
+          {item.status === 'mentor_assigned' ? (
             <Button variant="ghost" size="sm" asChild>
               <Link href="/student/mentor">
                 View Mentor <ExternalLink className="h-3.5 w-3.5 ml-1" />
               </Link>
             </Button>
-          ) : (
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/student/tasks">
-                View Tasks <ExternalLink className="h-3.5 w-3.5 ml-1" />
-              </Link>
-            </Button>
-          )}
+          ) : item.status === 'accepted' ? (
+            <span className="text-xs font-semibold text-green-700 bg-green-50 px-2 py-1 rounded-md border border-green-200">
+              Selected Candidate
+            </span>
+          ) : item.status === 'hr_shortlisted' ? (
+            <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-1 rounded-md border border-blue-200">
+              Shortlisted
+            </span>
+          ) : null}
 
-          {item.status !== 'withdrawn' && item.status !== 'rejected' && (
+          {item.status !== 'withdrawn' && item.status !== 'rejected' && item.status !== 'accepted' && item.status !== 'mentor_assigned' && (
             <Button
               variant="outline"
               size="sm"

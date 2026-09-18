@@ -29,78 +29,7 @@ export default function StudentTasksPage() {
     setLoading(true);
     try {
       const taskDocs = await getDocuments<Task>('tasks');
-      let myTasks = taskDocs.filter((t) => t.studentId === profile?.uid);
-
-      // Fallback standard weekly tasks if none assigned yet
-      if (!myTasks || myTasks.length === 0) {
-        myTasks = [
-          {
-            id: 'tsk-1',
-            internshipId: 'int-1',
-            mentorId: 'men-1',
-            studentId: profile?.uid || 'std-1',
-            studentName: profile?.displayName || 'Student',
-            week: 1,
-            title: 'Environment Setup & Codebase Onboarding',
-            description: 'Clone repository, configure environment variables, and submit starter ticket PR.',
-            instructions: '1. Set up local workspace.\n2. Verify Node & dependencies.\n3. Create feature branch and submit PR.',
-            dueDate: '2026-08-05',
-            status: 'approved',
-            aiGenerated: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          {
-            id: 'tsk-2',
-            internshipId: 'int-1',
-            mentorId: 'men-1',
-            studentId: profile?.uid || 'std-1',
-            studentName: profile?.displayName || 'Student',
-            week: 2,
-            title: 'Component Development & UI Integration',
-            description: 'Implement reusable dashboard UI components matching design specs.',
-            instructions: '1. Build responsive React components.\n2. Add Tailwind styling.\n3. Ensure prop types are well typed.',
-            dueDate: '2026-08-12',
-            status: 'approved',
-            aiGenerated: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          {
-            id: 'tsk-3',
-            internshipId: 'int-1',
-            mentorId: 'men-1',
-            studentId: profile?.uid || 'std-1',
-            studentName: profile?.displayName || 'Student',
-            week: 3,
-            title: 'API Integration & State Management',
-            description: 'Connect dashboard UI components to backend endpoints and manage global async state.',
-            instructions: '1. Create data fetching hooks.\n2. Add loading skeletons.\n3. Handle async error boundaries.',
-            dueDate: '2026-08-19',
-            status: 'in_progress',
-            aiGenerated: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          {
-            id: 'tsk-4',
-            internshipId: 'int-1',
-            mentorId: 'men-1',
-            studentId: profile?.uid || 'std-1',
-            studentName: profile?.displayName || 'Student',
-            week: 4,
-            title: 'Performance Optimization & Final Project Deliverable',
-            description: 'Lighthouse audit target 90+, bundle optimization, and demo presentation.',
-            instructions: '1. Run Lighthouse audit.\n2. Lazy load routes.\n3. Record 3-minute video walkthrough.',
-            dueDate: '2026-08-26',
-            status: 'pending',
-            aiGenerated: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ];
-      }
-
+      const myTasks = profile?.uid ? taskDocs.filter((t) => t.studentId === profile.uid) : [];
       setTasks(myTasks);
     } catch (err) {
       console.error('Error fetching tasks:', err);
@@ -165,6 +94,18 @@ export default function StudentTasksPage() {
           <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
           <span className="ml-3 text-sm text-slate-500 font-medium">Loading assigned tasks...</span>
         </div>
+      ) : tasks.length === 0 ? (
+        <Card>
+          <CardContent className="py-16 text-center space-y-3">
+            <div className="h-12 w-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+              <CheckSquare className="h-6 w-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">No Tasks Assigned Yet</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Once your industrial mentor is assigned to your selected internship, weekly assignments, deadlines, and technical deliverables will appear here.
+            </p>
+          </CardContent>
+        </Card>
       ) : (
         <div className="space-y-4">
           {tasks.map((task) => {
