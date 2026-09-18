@@ -400,7 +400,7 @@ export default function HRApplicantsPage() {
             className="bg-purple-600 hover:bg-purple-700"
             asChild
           >
-            <Link href={`/hr/mentor-recommendation?applicantId=${item.id}`}>
+            <Link href={`/hr/mentor-recommendation?applicationId=${item.id}`}>
               <UserCheck className="mr-1 h-3.5 w-3.5" />
 
               <span className="text-white">Assign Mentor</span>

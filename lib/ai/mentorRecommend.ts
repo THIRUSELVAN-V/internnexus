@@ -1,44 +1,79 @@
-import type { MentorRecommendation } from '@/lib/types';
+"use client";
+
+import type { MentorRecommendation } from "@/lib/types";
+import { getFirebaseAuth } from "@/lib/firebase/config";
 
 export async function recommendMentors(
   domain: string,
-  studentSkills: string[]
+  studentSkills: string[],
+  applicationId?: string,
 ): Promise<MentorRecommendation[]> {
-  await new Promise((res) => setTimeout(res, 900));
+  // These parameters are kept for compatibility with the existing page.
+  // The API will retrieve the authoritative student/internship data
+  // from Firestore using applicationId.
+  void domain;
+  void studentSkills;
 
-  return [
-    {
-      mentorId: 'men-1',
-      mentorName: 'Mr. Vijay',
-      designation: 'Principal Software Architect',
-      expertise: ['Web Development', 'React', 'Cloud Architecture', 'TypeScript'],
-      matchScore: 95,
-      currentWorkload: 2,
-      maxMentees: 5,
-      reasoning: '95% domain match. Excellent mentor record with 4 previous successful cohorts. Capacity available (2/5 mentees).',
-      rank: 1,
-    },
-    {
-      mentorId: 'men-2',
-      mentorName: 'Ananya Deshmukh',
-      designation: 'Senior Frontend Lead',
-      expertise: ['UI/UX Design', 'React', 'Frontend Engineering', 'State Management'],
-      matchScore: 88,
-      currentWorkload: 1,
-      maxMentees: 4,
-      reasoning: '88% match. Specialized in frontend engineering and UI performance optimization. Light workload (1/4 mentees).',
-      rank: 2,
-    },
-    {
-      mentorId: 'men-3',
-      mentorName: 'Vikram Mehta',
-      designation: 'Engineering Manager',
-      expertise: ['Full Stack', 'Node.js', 'System Design', 'Agile Methodologies'],
-      matchScore: 82,
-      currentWorkload: 3,
-      maxMentees: 5,
-      reasoning: '82% match. Strong full-stack expertise with focus on enterprise architecture and mentorship.',
-      rank: 3,
-    },
-  ];
+  if (!applicationId) {
+    throw new Error(
+      "Application ID is required to generate mentor recommendations.",
+    );
+  }
+
+  const auth = getFirebaseAuth();
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error(
+      "You must be logged in to generate mentor recommendations.",
+    );
+  }
+
+  const token = await user.getIdToken(true);
+
+  let response: Response;
+
+  try {
+    response = await fetch("/api/ai/mentor-recommendation", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        applicationId,
+      }),
+    });
+  } catch (error) {
+    console.error("Mentor recommendation API request failed:", error);
+
+    throw new Error(
+      "Unable to connect to the AI mentor recommendation service.",
+    );
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    recommendations?: MentorRecommendation[];
+    error?: string;
+  };
+
+  if (!response.ok) {
+    console.error(
+      "Mentor recommendation API failed:",
+      response.status,
+      payload,
+    );
+
+    throw new Error(
+      payload.error ??
+        `Mentor recommendation failed (HTTP ${response.status}).`,
+    );
+  }
+
+  if (!payload.recommendations || !Array.isArray(payload.recommendations)) {
+    throw new Error("The AI did not return mentor recommendations.");
+  }
+
+  return payload.recommendations;
 }
