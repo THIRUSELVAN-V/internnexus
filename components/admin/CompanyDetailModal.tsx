@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Company } from '@/lib/types';
-import { Building2, MapPin, Globe, User, Check, X, Ban, ShieldCheck, Mail } from 'lucide-react';
+import { Building2, MapPin, Globe, User, Check, X, Ban, ShieldCheck, Mail, Phone, Hash, Calendar, Briefcase, FileText } from 'lucide-react';
 
 interface CompanyDetailModalProps {
   company: Company | null;
@@ -101,10 +101,15 @@ export default function CompanyDetailModal({
           </div>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          {/* Status Badge */}
+        <div className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-1">
+          {/* Status & Submission Metadata */}
           <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <span className="text-xs font-semibold text-slate-600">Verification Status</span>
+            <div>
+              <span className="text-xs font-bold text-slate-700 block">Verification Status</span>
+              <span className="text-[11px] text-slate-400">
+                Submitted: {company.createdAt ? company.createdAt.slice(0, 10) : 'Recent'}
+              </span>
+            </div>
             <Badge
               variant={
                 company.status === 'approved'
@@ -113,48 +118,96 @@ export default function CompanyDetailModal({
                   ? 'destructive'
                   : 'warning'
               }
-              className="capitalize text-xs font-semibold"
+              className="capitalize text-xs font-semibold px-2.5 py-0.5"
             >
               {company.status}
             </Badge>
           </div>
 
-          {/* Key Details Grid */}
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
-              <span className="text-slate-400 flex items-center gap-1.5 font-medium">
-                <MapPin className="h-3.5 w-3.5 text-slate-500" /> Location
-              </span>
-              <p className="font-semibold text-slate-900">{company.location || 'Not specified'}</p>
+          {/* Section 1: Enterprise Information */}
+          <div className="space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <Building2 className="h-3.5 w-3.5 text-purple-600" /> Enterprise Details
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+              <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
+                <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                  <Mail className="h-3.5 w-3.5 text-slate-500" /> Official Company Email
+                </span>
+                <p className="font-semibold text-slate-900">{company.officialEmail || 'Not provided'}</p>
+              </div>
+
+              <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
+                <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                  <Phone className="h-3.5 w-3.5 text-slate-500" /> Company Contact
+                </span>
+                <p className="font-semibold text-slate-900">{company.contactNumber || 'Not provided'}</p>
+              </div>
+
+              <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
+                <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                  <Globe className="h-3.5 w-3.5 text-slate-500" /> Company Website
+                </span>
+                {company.website ? (
+                  <a
+                    href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-blue-600 hover:underline truncate block"
+                  >
+                    {company.website}
+                  </a>
+                ) : (
+                  <p className="font-semibold text-slate-400">Not provided</p>
+                )}
+              </div>
+
+              <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
+                <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                  <Hash className="h-3.5 w-3.5 text-slate-500" /> GST / Udyam / Reg No.
+                </span>
+                <p className="font-semibold text-slate-900 font-mono">{company.registrationNumber || 'Not provided'}</p>
+              </div>
             </div>
-            <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
+
+            {/* Address Details */}
+            <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1.5 text-xs">
               <span className="text-slate-400 flex items-center gap-1.5 font-medium">
-                <Building2 className="h-3.5 w-3.5 text-slate-500" /> Size
+                <MapPin className="h-3.5 w-3.5 text-emerald-600" /> Location &amp; Headquarters Address
               </span>
-              <p className="font-semibold text-slate-900 capitalize">{company.size || 'Startup'}</p>
-            </div>
-            <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
-              <span className="text-slate-400 flex items-center gap-1.5 font-medium">
-                <User className="h-3.5 w-3.5 text-slate-500" /> HR Manager
-              </span>
-              <p className="font-semibold text-slate-900">{company.hrName || 'N/A'}</p>
-            </div>
-            <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
-              <span className="text-slate-400 flex items-center gap-1.5 font-medium">
-                <Globe className="h-3.5 w-3.5 text-slate-500" /> Website
-              </span>
-              {company.website ? (
-                <a
-                  href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-semibold text-blue-600 hover:underline truncate block"
-                >
-                  {company.website}
-                </a>
-              ) : (
-                <p className="font-semibold text-slate-400">N/A</p>
+              <p className="font-semibold text-slate-900">{company.companyAddress || company.location || 'Not provided'}</p>
+              {(company.city || company.state || company.country || company.pincode) && (
+                <div className="flex flex-wrap gap-2 pt-1 text-[11px] text-slate-600">
+                  {company.city && <span className="bg-slate-100 px-2 py-0.5 rounded-md font-medium">City: {company.city}</span>}
+                  {company.state && <span className="bg-slate-100 px-2 py-0.5 rounded-md font-medium">State: {company.state}</span>}
+                  {company.country && <span className="bg-slate-100 px-2 py-0.5 rounded-md font-medium">Country: {company.country}</span>}
+                  {company.pincode && <span className="bg-slate-100 px-2 py-0.5 rounded-md font-medium">PIN: {company.pincode}</span>}
+                  <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md font-medium capitalize">Size: {company.size || 'startup'}</span>
+                </div>
               )}
+            </div>
+          </div>
+
+          {/* Section 2: HR Representative Information */}
+          <div className="space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5 text-blue-600" /> HR Representative
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+              <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
+                <span className="text-slate-400 font-medium">HR Name</span>
+                <p className="font-semibold text-slate-900">{company.hrName || 'Not specified'}</p>
+              </div>
+              <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
+                <span className="text-slate-400 font-medium">HR Work Email</span>
+                <p className="font-semibold text-slate-900 truncate">{company.hrEmail || 'N/A'}</p>
+              </div>
+              <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1">
+                <span className="text-slate-400 font-medium">HR Phone</span>
+                <p className="font-semibold text-slate-900">{company.hrPhone || 'N/A'}</p>
+              </div>
             </div>
           </div>
 
@@ -165,6 +218,14 @@ export default function CompanyDetailModal({
               <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
                 {company.description}
               </p>
+            </div>
+          )}
+
+          {/* Rejection Reason if present */}
+          {company.rejectionReason && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-1">
+              <span className="font-bold block text-rose-800">Rejection Notice / Feedback:</span>
+              <p>{company.rejectionReason}</p>
             </div>
           )}
 

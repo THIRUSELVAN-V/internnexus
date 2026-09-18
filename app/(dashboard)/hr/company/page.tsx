@@ -7,11 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Building2, Globe, MapPin, CheckCircle2, Save, Loader2, Check } from 'lucide-react';
+import { Building2, Globe, MapPin, CheckCircle2, Save, Loader2, Check, Mail, Phone, Hash } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments, setDocument, updateDocument } from '@/lib/firebase/firestore';
 import { updateUserProfile } from '@/lib/firebase/auth';
 import { Company, HRProfile } from '@/lib/types';
+import { COMPANY_SIZES } from '@/lib/utils/constants';
 
 export default function HRCompanyPage() {
   const { profile, refreshProfile } = useAuthContext();
@@ -26,6 +27,14 @@ export default function HRCompanyPage() {
   const [industry, setIndustry] = useState('');
   const [website, setWebsite] = useState('');
   const [location, setLocation] = useState('');
+  const [companyAddress, setCompanyAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [country, setCountry] = useState('India');
+  const [pincode, setPincode] = useState('');
+  const [officialEmail, setOfficialEmail] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
+  const [registrationNumber, setRegistrationNumber] = useState('');
   const [size, setSize] = useState<Company['size']>('startup');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<Company['status']>('approved');
@@ -40,7 +49,7 @@ export default function HRCompanyPage() {
       try {
         const hr = profile as HRProfile;
         const companies = await getDocuments<Company>('companies');
-        const myComp = companies.find((c) => c.hrId === profile.uid || (hr?.companyId && c.id === hr.companyId));
+        const myComp = companies.find((c) => c.hrId === profile.uid || (c.hrIds && c.hrIds.includes(profile.uid)) || (hr?.companyId && c.id === hr.companyId));
 
         if (myComp) {
           setCompanyId(myComp.id);
@@ -48,20 +57,36 @@ export default function HRCompanyPage() {
           setIndustry(myComp.industry || '');
           setWebsite(myComp.website || '');
           setLocation(myComp.location || '');
+          setCompanyAddress(myComp.companyAddress || '');
+          setCity(myComp.city || '');
+          setState(myComp.state || '');
+          setCountry(myComp.country || 'India');
+          setPincode(myComp.pincode || '');
+          setOfficialEmail(myComp.officialEmail || '');
+          setContactNumber(myComp.contactNumber || '');
+          setRegistrationNumber(myComp.registrationNumber || '');
           setSize(myComp.size || 'startup');
           setDescription(myComp.description || '');
-          setStatus(myComp.status || 'approved');
+          setStatus(myComp.status || 'pending');
         } else {
-          // Brand new HR: clean empty state
+          // Brand new HR: clean empty state, status strictly pending
           const generatedId = hr?.companyId || `comp-${profile.uid.slice(0, 8)}`;
           setCompanyId(generatedId);
           setName(hr?.companyName || '');
           setIndustry('');
           setWebsite('');
           setLocation('');
+          setCompanyAddress('');
+          setCity('');
+          setState('');
+          setCountry('India');
+          setPincode('');
+          setOfficialEmail(profile.email || '');
+          setContactNumber('');
+          setRegistrationNumber('');
           setSize('startup');
           setDescription('');
-          setStatus('approved');
+          setStatus(hr?.approvalStatus || 'pending');
         }
       } catch (err) {
         console.error('Error fetching company details:', err);
@@ -79,16 +104,31 @@ export default function HRCompanyPage() {
     setSavedSuccess(false);
     try {
       const targetCompId = companyId || `comp-${profile.uid.slice(0, 8)}`;
+
+      // Security check: an HR cannot self-promote to 'approved'
+      const secureStatus: Company['status'] =
+        status === 'approved' ? 'approved' : status === 'suspended' ? 'suspended' : 'pending';
+
+      const fullLoc = city && state ? `${city.trim()}, ${state.trim()}` : location.trim();
+
       const companyData: Partial<Company> = {
-        name,
-        industry,
-        website,
-        location,
+        name: name.trim(),
+        industry: industry.trim() || 'Software & IT Services',
+        website: website.trim(),
+        location: fullLoc,
+        companyAddress: companyAddress.trim(),
+        city: city.trim(),
+        state: state.trim(),
+        country: country.trim(),
+        pincode: pincode.trim(),
+        officialEmail: officialEmail.trim(),
+        contactNumber: contactNumber.trim(),
+        registrationNumber: registrationNumber.trim() ? registrationNumber.trim().toUpperCase() : '',
         size,
-        description,
+        description: description.trim(),
         hrId: profile.uid,
         hrName: profile.displayName || 'HR Manager',
-        status: status || 'approved',
+        status: secureStatus,
         updatedAt: new Date().toISOString(),
       };
 
@@ -97,7 +137,8 @@ export default function HRCompanyPage() {
       // Update HR user profile with company information
       await updateUserProfile(profile.uid, {
         companyId: targetCompId,
-        companyName: name,
+        companyName: name.trim(),
+        approvalStatus: secureStatus,
       } as Partial<HRProfile>);
 
       if (refreshProfile) {
@@ -158,6 +199,64 @@ export default function HRCompanyPage() {
               </div>
             </div>
 
+            {/* Address Details */}
+            <div>
+              <Label htmlFor="companyAddress">Full Company Address</Label>
+              <Input
+                id="companyAddress"
+                placeholder="Street Address, Tech Park, Suite No."
+                value={companyAddress}
+                onChange={(e) => setCompanyAddress(e.target.value)}
+                leftIcon={<MapPin className="h-4 w-4" />}
+                className="mt-1"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div>
+                <Label htmlFor="city">City</Label>
+                <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} className="mt-1 text-xs" />
+              </div>
+              <div>
+                <Label htmlFor="state">State</Label>
+                <Input id="state" value={state} onChange={(e) => setState(e.target.value)} className="mt-1 text-xs" />
+              </div>
+              <div>
+                <Label htmlFor="country">Country</Label>
+                <Input id="country" value={country} onChange={(e) => setCountry(e.target.value)} className="mt-1 text-xs" />
+              </div>
+              <div>
+                <Label htmlFor="pincode">Pincode</Label>
+                <Input id="pincode" value={pincode} onChange={(e) => setPincode(e.target.value)} className="mt-1 text-xs" />
+              </div>
+            </div>
+
+            {/* Official Contact Details */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="officialEmail">Official Company Email</Label>
+                <Input
+                  id="officialEmail"
+                  type="email"
+                  value={officialEmail}
+                  onChange={(e) => setOfficialEmail(e.target.value)}
+                  leftIcon={<Mail className="h-4 w-4" />}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="contactNumber">Company Contact Number</Label>
+                <Input
+                  id="contactNumber"
+                  value={contactNumber}
+                  onChange={(e) => setContactNumber(e.target.value)}
+                  leftIcon={<Phone className="h-4 w-4" />}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            {/* Website & Registration Number */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="website">Website URL</Label>
@@ -170,24 +269,40 @@ export default function HRCompanyPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="location">Headquarters Location</Label>
+                <Label htmlFor="regNo">Registration / GST / Udyam Number</Label>
                 <Input
-                  id="location"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  leftIcon={<MapPin className="h-4 w-4" />}
-                  className="mt-1"
+                  id="regNo"
+                  value={registrationNumber}
+                  onChange={(e) => setRegistrationNumber(e.target.value)}
+                  leftIcon={<Hash className="h-4 w-4" />}
+                  className="mt-1 font-mono"
                 />
               </div>
             </div>
 
             <div>
-              <Label htmlFor="cdesc">Company Overview & Mission</Label>
+              <Label htmlFor="csize">Company Size</Label>
+              <select
+                id="csize"
+                value={size}
+                onChange={(e) => setSize(e.target.value as any)}
+                className="mt-1 w-full h-10 px-3 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-700"
+              >
+                {COMPANY_SIZES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <Label htmlFor="cdesc">Company Overview &amp; Mission</Label>
               <Textarea
                 id="cdesc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="mt-1 min-h-[100px]"
+                className="mt-1 min-h-[80px]"
               />
             </div>
 

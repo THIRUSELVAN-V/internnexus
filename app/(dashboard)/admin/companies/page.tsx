@@ -39,6 +39,12 @@ export default function AdminCompaniesPage() {
         status: newStatus,
         updatedAt: new Date().toISOString(),
       });
+      if (company.hrId) {
+        await updateDocument('users', company.hrId, {
+          approvalStatus: newStatus,
+          updatedAt: new Date().toISOString(),
+        });
+      }
     } catch (error) {
       console.error('Error updating company status:', error);
     }

@@ -60,6 +60,8 @@ export interface HRProfile extends UserProfile {
   companyName?: string;
   designation?: string;
   department?: string;
+  approvalStatus?: CompanyStatus;
+  rejectionReason?: string;
 }
 
 export interface MentorProfile extends UserProfile {
@@ -82,6 +84,14 @@ export interface AdminProfile extends UserProfile {
 
 // ─── Company ────────────────────────────────────────────────────────────────
 
+export interface CompanyAddress {
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  pincode: string;
+}
+
 export interface Company {
   id: string;
   name: string;
@@ -90,10 +100,22 @@ export interface Company {
   website?: string;
   logoURL?: string;
   location: string;
+  companyAddress?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  pincode?: string;
+  officialEmail?: string;
+  contactNumber?: string;
+  registrationNumber?: string; // GST / Udyam / Company Reg No
   size: 'startup' | 'small' | 'medium' | 'large' | 'enterprise';
   status: CompanyStatus;
   hrId: string;
+  hrIds?: string[];
   hrName: string;
+  hrEmail?: string;
+  hrPhone?: string;
+  rejectionReason?: string;
   approvedBy?: string;
   approvedAt?: string;
   createdAt: string;

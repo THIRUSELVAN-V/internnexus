@@ -76,15 +76,32 @@ export default function AdminDashboardPage() {
     await updateDocument('companies', company.id, {
       status: 'approved',
       approvedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
+    const targetHrIds = company.hrIds && company.hrIds.length > 0 ? company.hrIds : company.hrId ? [company.hrId] : [];
+    for (const hrId of targetHrIds) {
+      await updateDocument('users', hrId, {
+        approvalStatus: 'approved',
+        updatedAt: new Date().toISOString(),
+      });
+    }
     fetchDashboardData();
   };
 
   const handleRejectCompany = async (company: Company, reason: string) => {
     await updateDocument('companies', company.id, {
       status: 'rejected',
-      rejectionReason: reason,
+      rejectionReason: reason || 'Company details could not be verified.',
+      updatedAt: new Date().toISOString(),
     });
+    const targetHrIds = company.hrIds && company.hrIds.length > 0 ? company.hrIds : company.hrId ? [company.hrId] : [];
+    for (const hrId of targetHrIds) {
+      await updateDocument('users', hrId, {
+        approvalStatus: 'rejected',
+        rejectionReason: reason || 'Company details could not be verified.',
+        updatedAt: new Date().toISOString(),
+      });
+    }
     fetchDashboardData();
   };
 

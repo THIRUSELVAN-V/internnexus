@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { CheckCircle2, UserCheck, Loader2 } from 'lucide-react';
 import { getDocuments, createDocument, updateDocument } from '@/lib/firebase/firestore';
 import { recommendMentors } from '@/lib/ai/mentorRecommend';
-import type { MentorRecommendation, Application, MentorAssignment, UserProfile, MentorProfile, Internship } from '@/lib/types';
+import type { MentorRecommendation, Application, MentorAssignment, UserProfile, MentorProfile, HRProfile, Internship } from '@/lib/types';
 import { useSearchParams } from 'next/navigation';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { filterHRInternships, filterHRApplications } from '@/lib/utils/hr';
@@ -52,17 +52,32 @@ export default function HRMentorRecommendationPage() {
         setApplication(currentApp);
 
         if (currentApp) {
-          const mentorUsers = userDocs.filter((u) => u.role === 'mentor') as MentorProfile[];
+          const hrProfile = profile as HRProfile;
+          const hrCompId = hrProfile?.companyId;
 
-          const recs = await recommendMentors(
-            currentApp.internshipTitle || 'Web Development',
-            currentApp.matchedSkills || ['React', 'TypeScript'],
-            mentorUsers
-          );
-          setRecommendations(recs);
+          // Strictly scope mentors to this HR's company
+          const mentorUsers = userDocs.filter((u) => {
+            if (u.role !== 'mentor') return false;
+            const mentor = u as MentorProfile;
+            if (hrCompId) {
+              return mentor.companyId === hrCompId || Boolean(mentor.companyName && hrProfile?.companyName && mentor.companyName.toLowerCase() === hrProfile.companyName.toLowerCase());
+            }
+            return false;
+          }) as MentorProfile[];
 
-          if (recs.length > 0) {
-            setSelectedMentorId(recs[0].mentorId);
+          if (mentorUsers.length > 0) {
+            const recs = await recommendMentors(
+              currentApp.internshipTitle || 'Web Development',
+              currentApp.matchedSkills || ['React', 'TypeScript'],
+              mentorUsers
+            );
+            setRecommendations(recs);
+
+            if (recs.length > 0) {
+              setSelectedMentorId(recs[0].mentorId);
+            }
+          } else {
+            setRecommendations([]);
           }
         }
       } catch (err) {
@@ -177,8 +192,11 @@ export default function HRMentorRecommendationPage() {
             </>
           ) : (
             <Card className="border-dashed border-slate-200 bg-slate-50/50">
-              <CardContent className="py-12 text-center text-xs text-slate-500">
-                No mentors registered in the system yet. Please register industrial mentor accounts to enable AI mentor recommendations.
+              <CardContent className="py-12 text-center text-xs text-slate-500 space-y-1.5">
+                <p className="font-semibold text-slate-700">No industrial mentors affiliated with your company yet.</p>
+                <p className="max-w-md mx-auto text-slate-500">
+                  Only industrial mentors registered under your verified enterprise can be assigned to mentees. Invite or register mentors for your company to enable AI mentor matching.
+                </p>
               </CardContent>
             </Card>
           )}

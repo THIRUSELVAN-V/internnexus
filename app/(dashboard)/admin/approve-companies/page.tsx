@@ -9,9 +9,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Check, X, ShieldCheck, Eye, Loader2, RefreshCw } from 'lucide-react';
 import { getDocuments, updateDocument, subscribeToCollection, where } from '@/lib/firebase/firestore';
-import { Company } from '@/lib/types';
+import { Company, HRProfile } from '@/lib/types';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 export default function AdminApproveCompaniesPage() {
+  const { profile } = useAuthContext();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
@@ -45,7 +47,17 @@ export default function AdminApproveCompaniesPage() {
       await updateDocument('companies', company.id, {
         status: 'approved',
         approvedAt: new Date().toISOString(),
+        approvedBy: profile?.displayName || 'Administrator',
+        updatedAt: new Date().toISOString(),
       });
+
+      const targetHrIds = company.hrIds && company.hrIds.length > 0 ? company.hrIds : company.hrId ? [company.hrId] : [];
+      for (const hrId of targetHrIds) {
+        await updateDocument('users', hrId, {
+          approvalStatus: 'approved',
+          updatedAt: new Date().toISOString(),
+        });
+      }
     } catch (error) {
       console.error('Error approving company:', error);
     }
@@ -55,8 +67,18 @@ export default function AdminApproveCompaniesPage() {
     try {
       await updateDocument('companies', company.id, {
         status: 'rejected',
-        rejectionReason: reason,
+        rejectionReason: reason || 'Company information could not be verified.',
+        updatedAt: new Date().toISOString(),
       });
+
+      const targetHrIds = company.hrIds && company.hrIds.length > 0 ? company.hrIds : company.hrId ? [company.hrId] : [];
+      for (const hrId of targetHrIds) {
+        await updateDocument('users', hrId, {
+          approvalStatus: 'rejected',
+          rejectionReason: reason || 'Company information could not be verified.',
+          updatedAt: new Date().toISOString(),
+        });
+      }
     } catch (error) {
       console.error('Error rejecting company:', error);
     }
@@ -69,20 +91,38 @@ export default function AdminApproveCompaniesPage() {
   const columns: Column<Company>[] = [
     {
       key: 'name',
-      header: 'Company Name',
+      header: 'Company Name & Location',
       render: (item) => (
         <div>
           <p className="font-bold text-slate-900">{item.name}</p>
-          <p className="text-xs text-slate-500">{item.industry} · {item.location || 'Location N/A'}</p>
+          <p className="text-xs text-slate-500">
+            {item.city && item.state ? `${item.city}, ${item.state}` : item.location || 'Location N/A'}
+          </p>
+          {item.registrationNumber && (
+            <span className="inline-block mt-0.5 text-[10px] font-mono bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200">
+              Reg: {item.registrationNumber}
+            </span>
+          )}
         </div>
       ),
     },
     {
       key: 'hrName',
-      header: 'HR Manager',
+      header: 'HR Representative',
       render: (item) => (
         <div>
           <span className="text-xs text-slate-800 font-semibold block">{item.hrName || 'N/A'}</span>
+          <span className="text-[11px] text-slate-400 block">{item.hrEmail || item.officialEmail || 'No email'}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'officialEmail',
+      header: 'Enterprise Contacts',
+      render: (item) => (
+        <div className="text-xs">
+          <p className="text-slate-700 font-medium">{item.officialEmail || 'N/A'}</p>
+          <p className="text-slate-400 text-[11px]">{item.contactNumber || 'N/A'}</p>
         </div>
       ),
     },

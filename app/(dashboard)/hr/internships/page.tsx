@@ -74,6 +74,11 @@ export default function HRInternshipsPage() {
       const skillsArray = skillsInput.split(',').map((s) => s.trim()).filter(Boolean);
 
       const hrProfile = profile as HRProfile;
+      if (hrProfile?.approvalStatus && hrProfile.approvalStatus !== 'approved') {
+        alert('Your company registration must be verified and approved by an Admin before creating internship postings.');
+        setPublishing(false);
+        return;
+      }
       const compId = hrProfile.companyId || `comp-${profile.uid.slice(0, 8)}`;
       const compName = hrProfile.companyName || (profile.displayName ? `${profile.displayName}'s Organization` : 'Company');
 
