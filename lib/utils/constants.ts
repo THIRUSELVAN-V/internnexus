@@ -98,15 +98,25 @@ export const STUDENT_NAV_ITEMS = [
 ];
 
 export const HR_NAV_ITEMS = [
-  { label: 'Dashboard', href: '/hr/dashboard', icon: 'LayoutDashboard' },
-  { label: 'Company Profile', href: '/hr/company', icon: 'Building2' },
-  { label: 'Internships', href: '/hr/internships', icon: 'Briefcase' },
-  { label: 'Applicants', href: '/hr/applicants', icon: 'Users' },
-  { label: 'Mentor Assignment', href: '/hr/mentor-recommendation', icon: 'UserCheck' },
-  { label: 'Active Interns', href: '/hr/interns', icon: 'Activity' },
-  { label: 'Certificates', href: '/hr/certificates', icon: 'Award' },
-  { label: 'Reports', href: '/hr/reports', icon: 'BarChart3' },
-  { label: 'Settings', href: '/hr/settings', icon: 'Settings' },
+  { label: "Dashboard", href: "/hr/dashboard", icon: "LayoutDashboard" },
+  { label: "Company Profile", href: "/hr/company", icon: "Building2" },
+  { label: "Internships", href: "/hr/internships", icon: "Briefcase" },
+  { label: "Applicants", href: "/hr/applicants", icon: "Users" },
+
+  // Manage industrial mentors belonging to the HR's company
+  { label: "Mentor Management", href: "/hr/mentors", icon: "UserCheck" },
+
+  // Assign an existing mentor to a selected intern
+  {
+    label: "Mentor Assignment",
+    href: "/hr/mentor-recommendation",
+    icon: "UserCheck",
+  },
+
+  { label: "Active Interns", href: "/hr/interns", icon: "Activity" },
+  { label: "Certificates", href: "/hr/certificates", icon: "Award" },
+  { label: "Reports", href: "/hr/reports", icon: "BarChart3" },
+  { label: "Settings", href: "/hr/settings", icon: "Settings" },
 ];
 
 export const MENTOR_NAV_ITEMS = [
