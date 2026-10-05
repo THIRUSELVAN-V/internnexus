@@ -34,15 +34,25 @@ export interface UserProfile {
   updatedAt: string;
 }
 
+export interface ResumeMetadata {
+  fileName: string;
+  contentType: "application/pdf";
+  size: number;
+}
 export interface StudentProfile extends UserProfile {
-  role: 'student';
+  role: "student";
   university?: string;
   degree?: string;
   graduationYear?: number;
   skills?: string[];
   gpa?: number;
+
   resumeURL?: string;
+  resume?: ResumeMetadata;
   resumeAnalysis?: ResumeAnalysis;
+  resumeAnalyzed?: boolean;
+  resumeAnalyzedAt?: string;
+
   linkedinURL?: string;
   githubURL?: string;
   portfolioURL?: string;
@@ -58,6 +68,8 @@ export interface HRProfile extends UserProfile {
   companyName?: string;
   designation?: string;
   department?: string;
+  approvalStatus?: CompanyStatus;
+  rejectionReason?: string;
 }
 
 export interface MentorProfile extends UserProfile {
@@ -80,6 +92,14 @@ export interface AdminProfile extends UserProfile {
 
 // ─── Company ────────────────────────────────────────────────────────────────
 
+export interface CompanyAddress {
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  pincode: string;
+}
+
 export interface Company {
   id: string;
   name: string;
@@ -88,10 +108,22 @@ export interface Company {
   website?: string;
   logoURL?: string;
   location: string;
+  companyAddress?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  pincode?: string;
+  officialEmail?: string;
+  contactNumber?: string;
+  registrationNumber?: string; // GST / Udyam / Company Reg No
   size: 'startup' | 'small' | 'medium' | 'large' | 'enterprise';
   status: CompanyStatus;
   hrId: string;
+  hrIds?: string[];
   hrName: string;
+  hrEmail?: string;
+  hrPhone?: string;
+  rejectionReason?: string;
   approvedBy?: string;
   approvedAt?: string;
   createdAt: string;
@@ -202,11 +234,48 @@ export interface Task {
   dueDate: string;
   status: TaskStatus;
   aiGenerated: boolean;
+  projectId?: string;
+  stepIndex?: number;
   resources?: string[];
   tags?: string[];
   createdAt: string;
   updatedAt: string;
   submissionId?: string;
+}
+
+// ─── Project ──────────────────────────────────────────────────────────────────
+
+export interface ProjectTaskRoadmap {
+  stepIndex: number;
+  title: string;
+  description: string;
+  instructions: string;
+  estimatedHours: number;
+  resources: string[];
+  tags: string[];
+  priority?: 'HIGH' | 'MEDIUM' | 'LOW';
+  suggestedMenteeId?: string;
+  suggestedMenteeName?: string;
+  matchReasoning?: string;
+  dependencies?: string[];
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  domain: string;
+  description: string;
+  mentorId: string;
+  mentorName: string;
+  companyId?: string;
+  companyName?: string;
+  assignedMenteeIds: string[];
+  assignedMenteeNames: string[];
+  status: 'planning' | 'active' | 'completed';
+  aiRoadmap?: ProjectTaskRoadmap[];
+  currentStepIndex?: Record<string, number>; // studentId -> current unlocked step index
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── Submission ───────────────────────────────────────────────────────────────
@@ -292,12 +361,19 @@ export interface Notification {
 // ─── AI Analysis ──────────────────────────────────────────────────────────────
 
 export interface ResumeAnalysis {
+  status: "processing" | "completed" | "failed";
   skills: string[];
   technicalSkills: string[];
   softSkills: string[];
+  programmingLanguages?: string[];
+  frameworks?: string[];
+  technologies?: string[];
+  tools?: string[];
+  domains?: string[];
   education: {
     degree: string;
     institution: string;
+    field?: string;
     year?: number;
     gpa?: number;
   }[];

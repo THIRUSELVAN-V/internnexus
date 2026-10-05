@@ -1,33 +1,37 @@
 "use client";
 
 import React, { Suspense, useEffect, useState } from "react";
+
 import { useSearchParams } from "next/navigation";
+
 import { CheckCircle2, UserCheck, Loader2, AlertCircle } from "lucide-react";
 
 import MentorRecommendationCard from "@/components/ai/MentorRecommendationCard";
+
 import { Card, CardContent } from "@/components/ui/card";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase/config";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+
+import {
+  doc,
+  getDoc,
+  addDoc,
+  collection,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
 import { recommendMentors } from "@/lib/ai/mentorRecommend";
-import type { MentorRecommendation } from "@/lib/types";
 
-interface ApplicationData {
-  studentId?: string;
-  internshipId?: string;
-  companyId?: string;
-  mentorId?: string;
-  matchScore?: number;
-  candidateMatch?: {
-    matchScore?: number;
-  };
-}
+import type { Application, MentorRecommendation } from "@/lib/types";
 
 interface UserData {
+  displayName?: string;
   name?: string;
+  email?: string;
 }
 
 interface InternshipData {
@@ -40,23 +44,36 @@ function HRMentorRecommendationContent() {
 
   const applicationId = searchParams.get("applicationId");
 
+  // ---------------------------------------------------------
+  // State
+  // ---------------------------------------------------------
+
   const [studentName, setStudentName] = useState("");
+
   const [internshipTitle, setInternshipTitle] = useState("");
+
+  const [companyName, setCompanyName] = useState("");
+
   const [candidateMatchScore, setCandidateMatchScore] = useState<number | null>(
     null,
   );
+
+  const [application, setApplication] = useState<Application | null>(null);
 
   const [recommendations, setRecommendations] = useState<
     MentorRecommendation[]
   >([]);
 
-  const [selectedMentor, setSelectedMentor] = useState<string>("");
+  const [selectedMentor, setSelectedMentor] = useState("");
 
   const [loading, setLoading] = useState(true);
+
   const [analyzing, setAnalyzing] = useState(false);
+
   const [confirming, setConfirming] = useState(false);
 
   const [confirmed, setConfirmed] = useState(false);
+
   const [confirmedMentorName, setConfirmedMentorName] = useState("");
 
   const [error, setError] = useState("");
@@ -71,12 +88,20 @@ function HRMentorRecommendationContent() {
         setError(
           "No application was selected. Open this page from an applicant record.",
         );
+
         setLoading(false);
         return;
       }
 
       try {
+        setLoading(true);
+        setError("");
+
         const db = getFirebaseDb();
+
+        // ---------------------------------------------------
+        // Application
+        // ---------------------------------------------------
 
         const applicationRef = doc(db, "applications", applicationId);
 
@@ -86,59 +111,96 @@ function HRMentorRecommendationContent() {
           throw new Error("Application was not found.");
         }
 
-        const application = applicationSnapshot.data() as ApplicationData;
+        const applicationData = applicationSnapshot.data() as Application;
 
-        // -----------------------------------------------------
+        setApplication({
+          ...applicationData,
+          id: applicationSnapshot.id,
+        });
+
+        // ---------------------------------------------------
+        // Existing candidate match
+        // ---------------------------------------------------
+
+        const existingMatchScore =
+          typeof applicationData.matchScore === "number"
+            ? applicationData.matchScore
+            : typeof applicationData.candidateMatch?.matchScore === "number"
+              ? applicationData.candidateMatch.matchScore
+              : null;
+
+        setCandidateMatchScore(existingMatchScore);
+
+        // ---------------------------------------------------
+        // Existing mentor assignment
+        // ---------------------------------------------------
+
+        if (applicationData.mentorId) {
+          setSelectedMentor(applicationData.mentorId);
+
+          if (applicationData.mentorName) {
+            setConfirmedMentorName(applicationData.mentorName);
+          }
+        }
+
+        // ---------------------------------------------------
         // Student
-        // -----------------------------------------------------
+        // ---------------------------------------------------
 
-        if (application.studentId) {
+        if (applicationData.studentId) {
           const studentSnapshot = await getDoc(
-            doc(db, "users", application.studentId),
+            doc(db, "users", applicationData.studentId),
           );
 
           if (studentSnapshot.exists()) {
             const student = studentSnapshot.data() as UserData;
 
-            setStudentName(student.name ?? "Student");
+            setStudentName(
+              student.displayName ??
+                student.name ??
+                applicationData.studentName ??
+                "Student",
+            );
+          } else {
+            setStudentName(applicationData.studentName ?? "Student");
           }
+        } else {
+          setStudentName(applicationData.studentName ?? "Student");
         }
 
-        // -----------------------------------------------------
+        // ---------------------------------------------------
         // Internship
-        // -----------------------------------------------------
+        // ---------------------------------------------------
 
-        if (application.internshipId) {
+        if (applicationData.internshipId) {
           const internshipSnapshot = await getDoc(
-            doc(db, "internships", application.internshipId),
+            doc(db, "internships", applicationData.internshipId),
           );
 
           if (internshipSnapshot.exists()) {
             const internship = internshipSnapshot.data() as InternshipData;
 
-            setInternshipTitle(internship.title ?? "Internship");
+            setInternshipTitle(
+              internship.title ??
+                applicationData.internshipTitle ??
+                "Internship",
+            );
+          } else {
+            setInternshipTitle(applicationData.internshipTitle ?? "Internship");
           }
+        } else {
+          setInternshipTitle(applicationData.internshipTitle ?? "Internship");
         }
 
-        // -----------------------------------------------------
-        // Existing candidate match score
-        // -----------------------------------------------------
+        setCompanyName(applicationData.companyName ?? "");
 
-        const existingMatchScore =
-          typeof application.matchScore === "number"
-            ? application.matchScore
-            : typeof application.candidateMatch?.matchScore === "number"
-              ? application.candidateMatch.matchScore
-              : null;
+        // ---------------------------------------------------
+        // Existing assignment means the workflow is already
+        // completed.
+        // ---------------------------------------------------
 
-        setCandidateMatchScore(existingMatchScore);
-
-        // -----------------------------------------------------
-        // Existing mentor assignment
-        // -----------------------------------------------------
-
-        if (application.mentorId) {
-          setSelectedMentor(application.mentorId);
+        if (applicationData.mentorId) {
+          setConfirmed(true);
         }
       } catch (caught) {
         console.error(
@@ -173,12 +235,25 @@ function HRMentorRecommendationContent() {
     setError("");
 
     try {
+      /*
+       * The client intentionally does not calculate mentor
+       * matching itself.
+       *
+       * The server-side mentor recommendation API:
+       * - verifies the HR
+       * - loads the application
+       * - verifies company ownership
+       * - loads mentors belonging to the company
+       * - considers mentor workload
+       * - sends trusted data to Gemini
+       * - returns structured recommendations
+       */
       const results = await recommendMentors("", [], applicationId);
 
       setRecommendations(results);
 
-      if (results.length > 0) {
-        setSelectedMentor(results[0].mentorId);
+      if (results.length === 0) {
+        setError("No suitable industrial mentors were found for this student.");
       }
     } catch (caught) {
       console.error("Mentor recommendation failed:", caught);
@@ -232,12 +307,141 @@ function HRMentorRecommendationContent() {
 
       const db = getFirebaseDb();
 
-      await updateDoc(doc(db, "applications", applicationId), {
+      // ---------------------------------------------------
+      // Verify application still exists
+      // ---------------------------------------------------
+
+      const applicationRef = doc(db, "applications", applicationId);
+
+      const applicationSnapshot = await getDoc(applicationRef);
+
+      if (!applicationSnapshot.exists()) {
+        throw new Error("Application was not found.");
+      }
+
+      const applicationData = applicationSnapshot.data() as Application;
+
+      // ---------------------------------------------------
+      // Verify current HR owns this company
+      // ---------------------------------------------------
+
+      const userSnapshot = await getDoc(doc(db, "users", user.uid));
+
+      if (!userSnapshot.exists()) {
+        throw new Error("HR profile was not found.");
+      }
+
+      const userData = userSnapshot.data();
+
+      if (userData.role !== "hr" && userData.role !== "admin") {
+        throw new Error(
+          "You are not authorized to assign an industrial mentor.",
+        );
+      }
+
+      if (
+        userData.role === "hr" &&
+        applicationData.companyId !== userData.companyId
+      ) {
+        throw new Error(
+          "You are not authorized to assign a mentor for this company.",
+        );
+      }
+
+      // ---------------------------------------------------
+      // Verify selected mentor still exists
+      // ---------------------------------------------------
+
+      const mentorSnapshot = await getDoc(
+        doc(db, "users", selectedRecommendation.mentorId),
+      );
+
+      if (!mentorSnapshot.exists()) {
+        throw new Error("The selected mentor no longer exists.");
+      }
+
+      const mentorData = mentorSnapshot.data();
+
+      if (mentorData.role !== "mentor") {
+        throw new Error("The selected user is not an industrial mentor.");
+      }
+
+      // ---------------------------------------------------
+      // Verify mentor belongs to same company
+      // ---------------------------------------------------
+
+      if (
+        applicationData.companyId &&
+        mentorData.companyId !== applicationData.companyId
+      ) {
+        throw new Error(
+          "The selected mentor does not belong to the student's company.",
+        );
+      }
+
+      // ---------------------------------------------------
+      // Prevent duplicate assignment
+      // ---------------------------------------------------
+
+      if (applicationData.mentorId) {
+        throw new Error(
+          "A mentor has already been assigned to this application.",
+        );
+      }
+
+      // ---------------------------------------------------
+      // Create mentor assignment record
+      // ---------------------------------------------------
+
+      const now = new Date().toISOString();
+
+      await addDoc(collection(db, "mentorAssignments"), {
+        internshipId: applicationData.internshipId,
+
+        companyId: applicationData.companyId,
+
+        studentId: applicationData.studentId,
+
+        studentName: applicationData.studentName || studentName,
+
         mentorId: selectedRecommendation.mentorId,
+
         mentorName: selectedRecommendation.mentorName,
-        mentorAssignedAt: serverTimestamp(),
-        mentorAssignedBy: user.uid,
+
+        status: "accepted",
+
+        aiRecommended: true,
+
+        recommendationScore: selectedRecommendation.matchScore,
+
+        startDate: now.slice(0, 10),
+
+        createdAt: serverTimestamp(),
+
+        updatedAt: serverTimestamp(),
       });
+
+      // ---------------------------------------------------
+      // Update application
+      // ---------------------------------------------------
+
+      await updateDoc(applicationRef, {
+        status: "mentor_assigned",
+
+        mentorId: selectedRecommendation.mentorId,
+
+        mentorName: selectedRecommendation.mentorName,
+
+        mentorAssignedAt: serverTimestamp(),
+
+        mentorAssignedBy: user.uid,
+
+        updatedAt: serverTimestamp(),
+      });
+
+      // ---------------------------------------------------
+      // Update local state
+      // ---------------------------------------------------
 
       setConfirmedMentorName(selectedRecommendation.mentorName);
 
@@ -310,7 +514,7 @@ function HRMentorRecommendationContent() {
           </h1>
 
           <p className="text-xs text-slate-500">
-            AI-assisted mentor assignment
+            AI-assisted industrial mentor assignment
           </p>
         </div>
 
@@ -325,8 +529,11 @@ function HRMentorRecommendationContent() {
             </h2>
 
             <p className="mx-auto max-w-sm text-xs text-slate-600">
-              {confirmedMentorName} has been assigned as the industrial mentor
-              for {studentName || "the student"}.
+              {confirmedMentorName ||
+                application?.mentorName ||
+                "The selected mentor"}{" "}
+              has been assigned as the industrial mentor for{" "}
+              {studentName || "the student"}.
             </p>
 
             <Badge variant="success" className="mt-2">
@@ -344,6 +551,7 @@ function HRMentorRecommendationContent() {
 
   return (
     <div className="max-w-4xl space-y-6">
+      {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-slate-900">
           AI Mentor Recommendation
@@ -351,7 +559,7 @@ function HRMentorRecommendationContent() {
 
         <p className="text-xs text-slate-500">
           AI proposes suitable mentors based on student skills, internship
-          requirements, expertise, and mentor workload.
+          requirements, mentor expertise, and mentor workload.
         </p>
       </div>
 
@@ -380,6 +588,7 @@ function HRMentorRecommendationContent() {
 
             <p className="text-xs text-slate-500">
               Applied for {internshipTitle || "selected internship"}
+              {companyName ? ` at ${companyName}` : ""}
             </p>
           </div>
 
@@ -464,6 +673,11 @@ function HRMentorRecommendationContent() {
     </div>
   );
 }
+
+// -----------------------------------------------------------
+// Suspense wrapper required because useSearchParams()
+// is used by the page.
+// -----------------------------------------------------------
 
 export default function HRMentorRecommendationPage() {
   return (

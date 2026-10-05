@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,18 +10,32 @@ import { Badge } from "@/components/ui/badge";
 import ResumeAnalysisCard from "@/components/ai/ResumeAnalysisCard";
 import CandidateMatchCard from "@/components/ai/CandidateMatchCard";
 
-import { UserCheck, ArrowLeft, Download, Loader2 } from "lucide-react";
+import {
+  UserCheck,
+  ArrowLeft,
+  Download,
+  Loader2,
+  Sparkles,
+  AlertCircle,
+} from "lucide-react";
 
 import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase/config";
 
 import { doc, getDoc } from "firebase/firestore";
 
-import type { Application, CandidateMatch, ResumeAnalysis } from "@/lib/types";
+import type {
+  Application,
+  CandidateMatch,
+  ResumeAnalysis,
+  HRProfile,
+  Internship,
+} from "@/lib/types";
 
 interface ApplicantData {
   application: Application;
   resumeAnalysis: ResumeAnalysis | null;
   candidateMatch: CandidateMatch | null;
+  student: Record<string, unknown> | null;
 }
 
 export default function HRApplicantDetailPage({
@@ -35,6 +50,8 @@ export default function HRApplicantDetailPage({
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState("");
+
+  const [unauthorized, setUnauthorized] = useState(false);
 
   // ---------------------------------------------------------
   // Get application ID from route
@@ -63,6 +80,7 @@ export default function HRApplicantDetailPage({
       try {
         setLoading(true);
         setError("");
+        setUnauthorized(false);
 
         const auth = getFirebaseAuth();
         const db = getFirebaseDb();
@@ -71,6 +89,28 @@ export default function HRApplicantDetailPage({
 
         if (!user) {
           setError("Please log in to view applicant details.");
+          return;
+        }
+
+        // ---------------------------------------------------
+        // Get current HR/admin profile
+        // ---------------------------------------------------
+
+        const userSnapshot = await getDoc(doc(db, "users", user.uid));
+
+        if (!userSnapshot.exists()) {
+          setError("User profile not found.");
+          return;
+        }
+
+        const userData = userSnapshot.data();
+
+        const isAdmin = userData.role === "admin";
+
+        const isHR = userData.role === "hr";
+
+        if (!isHR && !isAdmin) {
+          setUnauthorized(true);
           return;
         }
 
@@ -94,13 +134,56 @@ export default function HRApplicantDetailPage({
           id: applicationId,
         } as Application;
 
-        console.log("Loaded application:", application);
+        // ---------------------------------------------------
+        // Verify HR ownership
+        // ---------------------------------------------------
+
+        if (isHR) {
+          let isOwner = false;
+
+          if (
+            userData.companyId &&
+            application.companyId === userData.companyId
+          ) {
+            isOwner = true;
+          }
+
+          // If application companyId is unavailable,
+          // verify through the internship.
+          if (!isOwner && application.internshipId) {
+            try {
+              const internshipSnapshot = await getDoc(
+                doc(db, "internships", application.internshipId),
+              );
+
+              if (internshipSnapshot.exists()) {
+                const internshipData = internshipSnapshot.data() as Internship;
+
+                if (internshipData.companyId === userData.companyId) {
+                  isOwner = true;
+                }
+              }
+            } catch (internshipError) {
+              console.error(
+                "Failed to verify internship ownership:",
+                internshipError,
+              );
+            }
+          }
+
+          if (!isOwner) {
+            setUnauthorized(true);
+            return;
+          }
+        }
 
         // ---------------------------------------------------
         // Get student profile
         // ---------------------------------------------------
 
         let resumeAnalysis: ResumeAnalysis | null = null;
+
+        let student: Record<string, unknown> | null = null;
 
         if (application.studentId) {
           const studentRef = doc(db, "users", application.studentId);
@@ -110,7 +193,7 @@ export default function HRApplicantDetailPage({
           if (studentSnapshot.exists()) {
             const studentData = studentSnapshot.data();
 
-            console.log("Loaded student profile:", studentData);
+            student = studentData;
 
             if (studentData.resumeAnalysis) {
               resumeAnalysis = studentData.resumeAnalysis as ResumeAnalysis;
@@ -126,8 +209,11 @@ export default function HRApplicantDetailPage({
 
         if (applicationData.candidateMatch) {
           candidateMatch = applicationData.candidateMatch as CandidateMatch;
-        } else if (applicationData.matchScore !== undefined) {
-          // Compatibility with older saved results
+        } else if (
+          applicationData.matchScore !== undefined &&
+          applicationData.matchScore !== null
+        ) {
+          // Compatibility with older saved results.
           candidateMatch = {
             applicationId,
             internshipId: application.internshipId,
@@ -151,6 +237,7 @@ export default function HRApplicantDetailPage({
           application,
           resumeAnalysis,
           candidateMatch,
+          student,
         });
       } catch (err) {
         console.error("Failed to load applicant details:", err);
@@ -185,7 +272,31 @@ export default function HRApplicantDetailPage({
   }
 
   // ---------------------------------------------------------
-  // Error
+  // Unauthorized
+  // ---------------------------------------------------------
+
+  if (unauthorized) {
+    return (
+      <div className="max-w-xl mx-auto py-16 text-center space-y-3">
+        <AlertCircle className="h-10 w-10 text-amber-500 mx-auto" />
+
+        <h2 className="text-lg font-bold text-slate-900">
+          Unauthorized Access
+        </h2>
+
+        <p className="text-xs text-slate-500">
+          You do not have permission to view applicants for this company.
+        </p>
+
+        <Button asChild variant="outline" size="sm" className="mt-2">
+          <Link href="/hr/applicants">Back to Applicants</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------
+  // Error / not found
   // ---------------------------------------------------------
 
   if (error || !data) {
@@ -209,7 +320,7 @@ export default function HRApplicantDetailPage({
     );
   }
 
-  const { application, resumeAnalysis, candidateMatch } = data;
+  const { application, resumeAnalysis, candidateMatch, student } = data;
 
   // ---------------------------------------------------------
   // Main UI
@@ -218,7 +329,8 @@ export default function HRApplicantDetailPage({
   return (
     <div className="max-w-5xl space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/hr/applicants">
             <ArrowLeft className="mr-1 h-4 w-4" />
@@ -239,11 +351,11 @@ export default function HRApplicantDetailPage({
 
           <Button
             size="sm"
-            className="bg-purple-600 hover:bg-purple-700"
+            className="bg-purple-600 hover:bg-purple-700 text-white"
             asChild
           >
             <Link
-              href={`/hr/mentor-recommendation?applicantId=${application.id}`}
+              href={`/hr/mentor-recommendation?applicationId=${application.id}`}
             >
               <UserCheck className="mr-1 h-3.5 w-3.5" />
               Assign Mentor
@@ -252,7 +364,48 @@ export default function HRApplicantDetailPage({
         </div>
       </div>
 
-      {/* Applicant information */}
+      {/* Candidate Overview */}
+
+      <Card className="border-slate-200">
+        <CardContent className="p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">
+                  {application.studentName ||
+                    (student?.name as string) ||
+                    (student?.displayName as string) ||
+                    "Unknown Student"}
+                </h2>
+
+                <Badge variant="purple" className="text-xs capitalize">
+                  {(application.status || "pending").replace("_", " ")}
+                </Badge>
+              </div>
+
+              <p className="text-xs text-slate-500 mt-0.5">
+                Applied for{" "}
+                <strong className="text-slate-700">
+                  {application.internshipTitle || "Internship"}
+                </strong>{" "}
+                ·{" "}
+                {application.studentEmail ||
+                  (student?.email as string) ||
+                  "Email unavailable"}
+              </p>
+            </div>
+
+            {application.appliedAt && (
+              <p className="text-[11px] text-slate-400">
+                Applied: {new Date(application.appliedAt).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Applicant Information */}
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Applicant Information</CardTitle>
@@ -284,29 +437,69 @@ export default function HRApplicantDetailPage({
               </Badge>
             </div>
           </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 mt-5">
+            <div>
+              <p className="text-xs text-slate-500">Student</p>
+
+              <p className="text-sm font-semibold text-slate-900">
+                {application.studentName ||
+                  (student?.name as string) ||
+                  (student?.displayName as string) ||
+                  "Not available"}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-slate-500">Email</p>
+
+              <p className="text-sm font-semibold text-slate-900 break-all">
+                {application.studentEmail ||
+                  (student?.email as string) ||
+                  "Not available"}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-slate-500">College / University</p>
+
+              <p className="text-sm font-semibold text-slate-900">
+                {(student?.university as string) ||
+                  (student?.college as string) ||
+                  (student?.collegeName as string) ||
+                  "Not provided"}
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* AI analysis */}
+      {/* AI Analysis */}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Resume Analysis */}
+
         {resumeAnalysis ? (
           <ResumeAnalysisCard analysis={resumeAnalysis} />
         ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>AI Resume Analysis</CardTitle>
-            </CardHeader>
+          <Card className="border-dashed border-slate-200 bg-slate-50/50">
+            <CardContent className="py-16 text-center space-y-2">
+              <Sparkles className="h-8 w-8 text-slate-300 mx-auto" />
 
-            <CardContent>
-              <p className="text-sm text-slate-500">
-                Resume analysis is not available for this student yet.
+              <h3 className="text-sm font-bold text-slate-800">
+                No AI Resume Analysis
+              </h3>
+
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                The candidate has not completed an AI resume analysis or no
+                structured resume analysis is attached.
               </p>
             </CardContent>
           </Card>
         )}
 
         {/* Candidate Match */}
+
         {candidateMatch ? (
           <CandidateMatchCard
             matchScore={Number(candidateMatch.matchScore)}

@@ -6,7 +6,7 @@ import DataTable, { Column } from "@/components/shared/DataTable";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Eye, UserCheck, Loader2 } from "lucide-react";
+import { Sparkles, Eye, UserCheck, Check, X, Loader2 } from "lucide-react";
 
 import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase/config";
 
@@ -16,6 +16,7 @@ import {
   getDoc,
   getDocs,
   query,
+  updateDoc,
   where,
 } from "firebase/firestore";
 
@@ -28,7 +29,7 @@ interface ApplicantRow {
   role: string;
   college: string;
   score?: number;
-  status: "pending" | "ai_reviewed" | "hr_shortlisted" | "mentor_assigned";
+  status: Application["status"];
   appliedAt: string;
   application: Application;
   candidateMatch?: CandidateMatch;
@@ -43,10 +44,12 @@ export default function HRApplicantsPage() {
   const [error, setError] = useState("");
 
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   // ---------------------------------------------------------
   // Load applications
   // ---------------------------------------------------------
+
   const loadApplications = async () => {
     try {
       setLoading(true);
@@ -59,11 +62,11 @@ export default function HRApplicantsPage() {
         return;
       }
 
-      // Get HR profile
+      // Get HR/admin profile
       const userSnapshot = await getDoc(doc(db, "users", user.uid));
 
       if (!userSnapshot.exists()) {
-        setError("HR profile not found.");
+        setError("User profile not found.");
         return;
       }
 
@@ -127,17 +130,16 @@ export default function HRApplicantsPage() {
               if (studentSnapshot.exists()) {
                 const studentData = studentSnapshot.data();
 
-                // Try common name fields
                 studentName =
                   studentData.name ||
                   studentData.displayName ||
                   studentData.fullName ||
                   studentName;
 
-                // Try common college fields
                 college =
                   studentData.college ||
                   studentData.collegeName ||
+                  studentData.university ||
                   studentData.institution ||
                   college;
               }
@@ -188,7 +190,6 @@ export default function HRApplicantsPage() {
           let score: number | undefined =
             candidateMatch?.matchScore ?? data.matchScore;
 
-          // Make sure score is actually a number
           if (score !== undefined && score !== null) {
             const numericScore = Number(score);
 
@@ -197,24 +198,16 @@ export default function HRApplicantsPage() {
 
           return {
             id: applicationDoc.id,
-
             name: studentName || "Unknown Student",
-
             role: internshipTitle || "Internship",
-
             college: college || "College not available",
-
             score,
-
             status: data.status || "pending",
-
             appliedAt: data.appliedAt || "",
-
             application: {
               ...data,
               id: applicationDoc.id,
             },
-
             candidateMatch,
           } as ApplicantRow;
         }),
@@ -271,7 +264,6 @@ export default function HRApplicantsPage() {
         application.studentId,
       );
 
-      // Update row immediately
       setApplicants((currentApplicants) =>
         currentApplicants.map((applicant) =>
           applicant.id === item.id
@@ -279,6 +271,14 @@ export default function HRApplicantsPage() {
                 ...applicant,
                 score: Number(result.matchScore),
                 candidateMatch: result,
+                application: {
+                  ...applicant.application,
+                  candidateMatch: result,
+                  matchScore: Number(result.matchScore),
+                  matchedSkills: result.matchedSkills,
+                  missingSkills: result.missingSkills,
+                  matchReasoning: result.reasoning,
+                },
               }
             : applicant,
         ),
@@ -295,6 +295,86 @@ export default function HRApplicantsPage() {
   };
 
   // ---------------------------------------------------------
+  // Shortlist applicant
+  // ---------------------------------------------------------
+
+  const handleShortlist = async (applicationId: string) => {
+    try {
+      setUpdatingId(applicationId);
+      setError("");
+
+      await updateDoc(doc(db, "applications", applicationId), {
+        status: "hr_shortlisted",
+        updatedAt: new Date().toISOString(),
+      });
+
+      setApplicants((currentApplicants) =>
+        currentApplicants.map((applicant) =>
+          applicant.id === applicationId
+            ? {
+                ...applicant,
+                status: "hr_shortlisted",
+                application: {
+                  ...applicant.application,
+                  status: "hr_shortlisted",
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : applicant,
+        ),
+      );
+    } catch (err) {
+      console.error("Error shortlisting applicant:", err);
+
+      setError(
+        err instanceof Error ? err.message : "Failed to shortlist applicant.",
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // ---------------------------------------------------------
+  // Reject applicant
+  // ---------------------------------------------------------
+
+  const handleReject = async (applicationId: string) => {
+    try {
+      setUpdatingId(applicationId);
+      setError("");
+
+      await updateDoc(doc(db, "applications", applicationId), {
+        status: "rejected",
+        updatedAt: new Date().toISOString(),
+      });
+
+      setApplicants((currentApplicants) =>
+        currentApplicants.map((applicant) =>
+          applicant.id === applicationId
+            ? {
+                ...applicant,
+                status: "rejected",
+                application: {
+                  ...applicant.application,
+                  status: "rejected",
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : applicant,
+        ),
+      );
+    } catch (err) {
+      console.error("Error rejecting applicant:", err);
+
+      setError(
+        err instanceof Error ? err.message : "Failed to reject applicant.",
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // ---------------------------------------------------------
   // Table columns
   // ---------------------------------------------------------
 
@@ -302,7 +382,6 @@ export default function HRApplicantsPage() {
     {
       key: "name",
       header: "Applicant Name",
-
       render: (item) => (
         <div>
           <p className="font-bold text-slate-900">{item.name}</p>
@@ -315,16 +394,20 @@ export default function HRApplicantsPage() {
     {
       key: "role",
       header: "Applied Role",
-
       render: (item) => (
-        <span className="text-xs font-medium text-slate-700">{item.role}</span>
+        <div>
+          <p className="text-xs font-semibold text-slate-800">{item.role}</p>
+
+          <p className="text-[11px] text-slate-500">
+            {item.application.companyName}
+          </p>
+        </div>
       ),
     },
 
     {
       key: "score",
       header: "AI Match Score",
-
       render: (item) => {
         const score = item.score;
 
@@ -348,11 +431,18 @@ export default function HRApplicantsPage() {
     {
       key: "status",
       header: "Status",
-
       render: (item) => (
         <Badge
-          variant={item.status === "mentor_assigned" ? "success" : "default"}
-          className="text-xs capitalize"
+          variant={
+            item.status === "mentor_assigned" || item.status === "accepted"
+              ? "success"
+              : item.status === "rejected"
+                ? "destructive"
+                : item.status === "hr_shortlisted"
+                  ? "default"
+                  : "warning"
+          }
+          className="text-xs font-semibold capitalize"
         >
           {item.status.replace("_", " ")}
         </Badge>
@@ -362,52 +452,110 @@ export default function HRApplicantsPage() {
     {
       key: "actions",
       header: "Actions",
+      render: (item) => {
+        const isAnalyzing = analyzingId === item.id;
+        const isUpdating = updatingId === item.id;
 
-      render: (item) => (
-        <div className="flex items-center gap-2">
-          {/* Analyze AI */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => handleAnalyzeMatch(item)}
-            disabled={analyzingId === item.id}
-          >
-            {analyzingId === item.id ? (
-              <>
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-1 h-3.5 w-3.5" />
+        const canReview = item.status !== "rejected";
 
-                {item.candidateMatch ? "Re-analyze" : "Analyze AI"}
-              </>
+        const canShortlist =
+          item.status === "pending" || item.status === "ai_reviewed";
+
+        const canReject =
+          item.status === "pending" ||
+          item.status === "ai_reviewed" ||
+          item.status === "hr_shortlisted";
+
+        const canAssignMentor =
+          item.status === "hr_shortlisted" ||
+          item.status === "mentor_assigned" ||
+          item.status === "accepted";
+
+        return (
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Analyze AI */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleAnalyzeMatch(item)}
+              disabled={isAnalyzing || isUpdating}
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-1 h-3.5 w-3.5" />
+                  {item.candidateMatch ? "Re-analyze" : "Analyze AI"}
+                </>
+              )}
+            </Button>
+
+            {/* Review AI */}
+            {canReview && (
+              <Button size="sm" variant="outline" asChild>
+                <Link href={`/hr/applicants/${item.id}`}>
+                  <Eye className="mr-1 h-3.5 w-3.5" />
+                  Review AI
+                </Link>
+              </Button>
             )}
-          </Button>
 
-          {/* Review AI */}
-          <Button size="sm" variant="outline" asChild>
-            <Link href={`/hr/applicants/${item.id}`}>
-              <Eye className="mr-1 h-3.5 w-3.5" />
-              Review AI
-            </Link>
-          </Button>
+            {/* Reject */}
+            {canReject && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleReject(item.id)}
+                disabled={isUpdating || isAnalyzing}
+                className="border-red-200 text-red-600 hover:bg-red-50 text-xs"
+              >
+                {isUpdating && item.status !== "hr_shortlisted" ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <X className="h-3.5 w-3.5 mr-1" />
+                )}
+                Reject
+              </Button>
+            )}
 
-          {/* Assign Mentor */}
-          <Button
-            size="sm"
-            className="bg-purple-600 hover:bg-purple-700"
-            asChild
-          >
-            <Link href={`/hr/mentor-recommendation?applicationId=${item.id}`}>
-              <UserCheck className="mr-1 h-3.5 w-3.5" />
+            {/* Shortlist */}
+            {canShortlist && (
+              <Button
+                size="sm"
+                onClick={() => handleShortlist(item.id)}
+                disabled={isUpdating || isAnalyzing}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+              >
+                {isUpdating ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Check className="h-3.5 w-3.5 mr-1" />
+                )}
+                Shortlist
+              </Button>
+            )}
 
-              <span className="text-white">Assign Mentor</span>
-            </Link>
-          </Button>
-        </div>
-      ),
+            {/* Assign Mentor */}
+            {canAssignMentor && (
+              <Button
+                size="sm"
+                className="bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs"
+                asChild
+              >
+                <Link
+                  href={`/hr/mentor-recommendation?applicationId=${item.id}`}
+                >
+                  <UserCheck className="h-3.5 w-3.5 mr-1" />
+                  Assign Mentor
+                </Link>
+              </Button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -423,8 +571,8 @@ export default function HRApplicantsPage() {
         </h1>
 
         <p className="text-xs text-slate-500">
-          Review AI resume summaries, candidate match scores, and shortlist
-          candidates
+          Review candidate applications, AI resume analysis, match scores,
+          shortlist candidates, and assign industrial mentors
         </p>
       </div>
 

@@ -89,11 +89,9 @@ export async function uploadAndAnalyzeResume(
   try {
     response = await fetch("/api/resume/analyze", {
       method: "POST",
-
       headers: {
         Authorization: `Bearer ${token}`,
       },
-
       body: formData,
     });
   } catch (caught) {
@@ -114,7 +112,6 @@ export async function uploadAndAnalyzeResume(
     analysis?: ResumeAnalysis & {
       fileName?: string;
     };
-
     error?: string;
   };
 
@@ -135,6 +132,7 @@ export async function uploadAndAnalyzeResume(
       payload.error ?? `Resume analysis failed (HTTP ${response.status}).`,
     );
   }
+
   if (!payload.analysis) {
     throw new ResumeUploadError("The AI did not return a resume analysis.");
   }

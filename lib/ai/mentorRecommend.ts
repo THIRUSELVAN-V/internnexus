@@ -5,11 +5,11 @@ import { getFirebaseAuth } from "@/lib/firebase/config";
 
 export async function recommendMentors(
   domain: string,
-  studentSkills: string[],
+  studentSkills: string[] = [],
   applicationId?: string,
 ): Promise<MentorRecommendation[]> {
-  // These parameters are kept for compatibility with the existing page.
-  // The API will retrieve the authoritative student/internship data
+  // These parameters are kept for compatibility with existing
+  // pages/components. The server retrieves authoritative data
   // from Firestore using applicationId.
   void domain;
   void studentSkills;
@@ -29,7 +29,17 @@ export async function recommendMentors(
     );
   }
 
-  const token = await user.getIdToken(true);
+  let token: string;
+
+  try {
+    token = await user.getIdToken(true);
+  } catch (error) {
+    console.error("Failed to obtain Firebase authentication token:", error);
+
+    throw new Error(
+      "Unable to authenticate with the mentor recommendation service.",
+    );
+  }
 
   let response: Response;
 

@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { RefreshCw, Sparkles } from "lucide-react";
+import React, { useEffect, useState } from "react";
+
+import {
+  RefreshCw,
+  Sparkles,
+  ShieldCheck,
+  AlertCircle,
+  Loader2,
+} from "lucide-react";
 
 import FileUpload from "@/components/shared/FileUpload";
 import ResumeAnalysisCard from "@/components/ai/ResumeAnalysisCard";
@@ -22,12 +29,31 @@ import type {
   StudentProfile,
 } from "@/lib/types";
 
-import { useAuthContext } from "@/contexts/AuthContext";
+import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase/config";
+
+import { doc, getDoc } from "firebase/firestore";
 
 type AnalysisState = "idle" | "uploading" | "analyzing" | "success" | "error";
 
 export default function StudentResumePage() {
-  const { user, profile, loading } = useAuthContext();
+  // --------------------------------------------------
+  // Firebase
+  // --------------------------------------------------
+
+  const auth = getFirebaseAuth();
+  const db = getFirebaseDb();
+
+  // --------------------------------------------------
+  // Student profile
+  // --------------------------------------------------
+
+  const [student, setStudent] = useState<StudentProfile | null>(null);
+
+  const [loading, setLoading] = useState(true);
+
+  // --------------------------------------------------
+  // Resume / analysis state
+  // --------------------------------------------------
 
   const [analysis, setAnalysis] = useState<ResumeAnalysis | null>(null);
 
@@ -41,11 +67,69 @@ export default function StudentResumePage() {
     "Upload your resume to analyze your profile.",
   );
 
+  const [authReady, setAuthReady] = useState(false);
+  const [currentUser, setCurrentUser] = useState(auth.currentUser);
   // --------------------------------------------------
-  // Existing student profile
+  // Load current student
   // --------------------------------------------------
 
-  const storedProfile = profile as StudentProfile | null;
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      setCurrentUser(user);
+      setAuthReady(true);
+
+      if (!user) {
+        setStudent(null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const studentRef = doc(db, "users", user.uid);
+
+        const snapshot = await getDoc(studentRef);
+
+        if (!snapshot.exists()) {
+          setStudent(null);
+          setLoading(false);
+          return;
+        }
+
+        const data = snapshot.data() as StudentProfile;
+
+        if (data.role !== "student") {
+          setStudent(null);
+          setLoading(false);
+          return;
+        }
+
+        setStudent({
+          ...data,
+          uid: user.uid,
+        });
+
+        // ------------------------------------------------
+        // Restore previously saved analysis
+        // ------------------------------------------------
+
+        if (data.resumeAnalysis && data.resumeAnalysis.status === "completed") {
+          setAnalysis(data.resumeAnalysis);
+        }
+      } catch (error) {
+        console.error("Failed to load student profile:", error);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [auth, db]);
+
+  // --------------------------------------------------
+  // Existing profile data
+  // --------------------------------------------------
+
+  const storedProfile = student;
 
   const activeResume = resume ?? storedProfile?.resume ?? null;
 
@@ -69,6 +153,8 @@ export default function StudentResumePage() {
   // --------------------------------------------------
 
   const handleFileSelect = async (file: File) => {
+    const user = currentUser;
+
     if (!user || state === "uploading" || state === "analyzing") {
       return;
     }
@@ -83,15 +169,20 @@ export default function StudentResumePage() {
 
         if (value >= 70 && value < 100) {
           setState("analyzing");
+
           setMessage("AI is analyzing your resume...");
         }
       });
 
-      // ----------------------------------------------
-      // Save result in local state
-      // ----------------------------------------------
+      // ------------------------------------------------
+      // Store returned resume metadata
+      // ------------------------------------------------
 
       setResume(result.resume);
+
+      // ------------------------------------------------
+      // Store structured AI analysis
+      // ------------------------------------------------
 
       setAnalysis(result.analysis);
 
@@ -100,11 +191,25 @@ export default function StudentResumePage() {
       setState("success");
 
       setMessage("Resume analysis completed successfully.");
+
+      // ------------------------------------------------
+      // Update local student profile state
+      // ------------------------------------------------
+
+      setStudent((current) =>
+        current
+          ? {
+              ...current,
+              resume: result.resume,
+              resumeAnalysis: result.analysis,
+              skills: result.analysis.skills,
+            }
+          : current,
+      );
     } catch (caught) {
       console.error("Resume upload/analysis error:", caught);
 
       setState("error");
-
       setProgress(0);
 
       setMessage(
@@ -122,12 +227,28 @@ export default function StudentResumePage() {
   const busy = state === "uploading" || state === "analyzing";
 
   // --------------------------------------------------
+  // Reset local analysis
+  // --------------------------------------------------
+
+  const handleAnalyzeAnother = () => {
+    setAnalysis(null);
+    setResume(null);
+
+    setState("idle");
+    setProgress(0);
+
+    setMessage("Upload your resume to analyze your profile.");
+  };
+
+  // --------------------------------------------------
   // UI
   // --------------------------------------------------
 
   return (
     <div className="max-w-5xl space-y-6">
+      {/* ------------------------------------------ */}
       {/* Page Header */}
+      {/* ------------------------------------------ */}
 
       <div>
         <h1 className="text-xl font-bold text-slate-900">
@@ -139,12 +260,14 @@ export default function StudentResumePage() {
         </p>
       </div>
 
+      {/* ------------------------------------------ */}
       {/* Main Content */}
+      {/* ------------------------------------------ */}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        {/* ------------------------------------------ */}
+        {/* ---------------------------------------- */}
         {/* Upload Section */}
-        {/* ------------------------------------------ */}
+        {/* ---------------------------------------- */}
 
         <Card className="md:col-span-1">
           <CardHeader>
@@ -162,7 +285,7 @@ export default function StudentResumePage() {
               label="Upload PDF Resume"
               description="PDF only (maximum 10MB)"
               onFileSelect={handleFileSelect}
-              disabled={busy || loading || !user}
+              disabled={busy || loading || !authReady || !currentUser}
             />
 
             {/* -------------------------------------- */}
@@ -187,7 +310,9 @@ export default function StudentResumePage() {
 
             {state === "analyzing" && (
               <div className="space-y-2 rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-center">
-                <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+                <div className="mx-auto flex h-5 w-5 items-center justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
+                </div>
 
                 <p className="text-xs font-semibold text-indigo-900">
                   AI is analyzing your resume...
@@ -204,12 +329,14 @@ export default function StudentResumePage() {
             {/* -------------------------------------- */}
 
             {state === "error" && (
-              <p
+              <div
                 role="alert"
-                className="rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700"
+                className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700"
               >
-                {displayedMessage}
-              </p>
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
+                <span>{displayedMessage}</span>
+              </div>
             )}
 
             {/* -------------------------------------- */}
@@ -217,9 +344,9 @@ export default function StudentResumePage() {
             {/* -------------------------------------- */}
 
             {state === "success" && (
-              <p className="rounded-lg border border-green-100 bg-green-50 p-3 text-xs text-green-700">
+              <div className="rounded-lg border border-green-100 bg-green-50 p-3 text-xs text-green-700">
                 ✓ {displayedMessage}
-              </p>
+              </div>
             )}
 
             {/* -------------------------------------- */}
@@ -227,16 +354,18 @@ export default function StudentResumePage() {
             {/* -------------------------------------- */}
 
             {activeResume && (
-              <div className="space-y-2 border-t border-slate-100 pt-3">
-                <p className="text-xs text-slate-500">Current Resume:</p>
+              <div className="space-y-3 border-t border-slate-100 pt-3">
+                <div>
+                  <p className="text-xs text-slate-500">Current Resume</p>
 
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs">
-                  <span className="block truncate font-semibold text-slate-700">
-                    {activeResume.fileName}
-                  </span>
+                  <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs">
+                    <span className="block truncate font-semibold text-slate-700">
+                      {activeResume.fileName}
+                    </span>
+                  </div>
                 </div>
 
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] leading-relaxed text-slate-500">
                   The original PDF is processed temporarily and is not stored in
                   Firebase Storage. Upload the PDF again whenever you want a
                   fresh analysis.
@@ -249,13 +378,7 @@ export default function StudentResumePage() {
                     size="sm"
                     variant="outline"
                     className="w-full"
-                    onClick={() => {
-                      setAnalysis(null);
-                      setResume(null);
-                      setState("idle");
-                      setProgress(0);
-                      setMessage("Upload your resume to analyze your profile.");
-                    }}
+                    onClick={handleAnalyzeAnother}
                     disabled={busy}
                   >
                     <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
@@ -264,6 +387,23 @@ export default function StudentResumePage() {
                 )}
               </div>
             )}
+
+            {/* -------------------------------------- */}
+            {/* Security Notice */}
+            {/* -------------------------------------- */}
+
+            <div className="space-y-2 border-t border-slate-100 pt-3">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+
+                <span>Zero File Storage Policy Active</span>
+              </div>
+
+              <p className="text-[11px] leading-relaxed text-slate-400">
+                Files are processed temporarily by the server-side AI analysis
+                service. Binary resume files are not stored in Firebase Storage.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
@@ -276,8 +416,8 @@ export default function StudentResumePage() {
             <ResumeAnalysisCard analysis={activeAnalysis} />
           ) : (
             <Card className="border-dashed border-slate-200">
-              <CardContent className="py-16 text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+              <CardContent className="space-y-3 py-16 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
                   <Sparkles className="h-6 w-6" />
                 </div>
 
@@ -285,8 +425,10 @@ export default function StudentResumePage() {
                   AI Resume Analysis
                 </h3>
 
-                <p className="mx-auto mt-2 max-w-xs text-xs text-slate-500">
-                  {displayedMessage}
+                <p className="mx-auto max-w-xs text-xs text-slate-500">
+                  {displayedState === "error"
+                    ? displayedMessage
+                    : "Upload your PDF resume to extract structured skills, projects, education, experience, and other profile information."}
                 </p>
               </CardContent>
             </Card>

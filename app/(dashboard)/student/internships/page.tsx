@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+
 import {
   Dialog,
   DialogContent,
@@ -13,7 +16,15 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Search, MapPin, Clock, CheckCircle2, Loader2 } from "lucide-react";
+
+import {
+  Search,
+  MapPin,
+  Clock,
+  CheckCircle2,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 
 import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase/config";
 
@@ -46,17 +57,48 @@ interface Internship {
   status: string;
 }
 
+interface StudentData {
+  displayName?: string;
+  name?: string;
+  email?: string;
+  resumeURL?: string;
+  currentInternshipId?: string;
+}
+interface StudentApplication {
+  id: string;
+  studentId: string;
+  studentName?: string;
+  studentEmail?: string;
+  internshipId: string;
+  internshipTitle?: string;
+  companyId?: string;
+  companyName?: string;
+  resumeURL?: string;
+  status: string;
+}
+
 export default function BrowseInternshipsPage() {
   const [queryText, setQueryText] = useState("");
 
   const [internships, setInternships] = useState<Internship[]>([]);
+
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
 
   const [selectedInternship, setSelectedInternship] =
     useState<Internship | null>(null);
 
+  const [student, setStudent] = useState<StudentData | null>(null);
+
+  const [hasActiveInternship, setHasActiveInternship] = useState(false);
+
+  const [activeInternshipTitle, setActiveInternshipTitle] = useState("");
+
+  const [activeCompanyName, setActiveCompanyName] = useState("");
+
   const [loading, setLoading] = useState(true);
+
   const [applyingId, setApplyingId] = useState<string | null>(null);
+
   const [error, setError] = useState("");
 
   // ---------------------------------------------------------
@@ -71,7 +113,21 @@ export default function BrowseInternshipsPage() {
       const db = getFirebaseDb();
 
       // -----------------------------------------------------
-      // 1. Load active internships
+      // 1. Load current student profile
+      // -----------------------------------------------------
+
+      const studentSnapshot = await getDoc(doc(db, "users", uid));
+
+      if (!studentSnapshot.exists()) {
+        throw new Error("Student profile was not found.");
+      }
+
+      const studentData = studentSnapshot.data() as StudentData;
+
+      setStudent(studentData);
+
+      // -----------------------------------------------------
+      // 2. Load active internships
       // -----------------------------------------------------
 
       const internshipSnapshot = await getDocs(collection(db, "internships"));
@@ -83,7 +139,7 @@ export default function BrowseInternshipsPage() {
       });
 
       // -----------------------------------------------------
-      // 2. Load company names
+      // 3. Load company names
       // -----------------------------------------------------
 
       const companyCache = new Map<string, string>();
@@ -104,7 +160,10 @@ export default function BrowseInternshipsPage() {
             if (companySnap.exists()) {
               const companyData = companySnap.data();
 
-              companyCache.set(companyId, companyData.companyName || "Company");
+              companyCache.set(
+                companyId,
+                companyData.name ?? companyData.companyName ?? "Company",
+              );
             }
           } catch (companyError) {
             console.error("Failed to load company:", companyId, companyError);
@@ -113,7 +172,7 @@ export default function BrowseInternshipsPage() {
       );
 
       // -----------------------------------------------------
-      // 3. Convert Firestore internships into UI objects
+      // 4. Convert Firestore internships
       // -----------------------------------------------------
 
       const loadedInternships: Internship[] = activeInternships.map(
@@ -124,19 +183,32 @@ export default function BrowseInternshipsPage() {
 
           return {
             id: docSnap.id,
+
             title: data.title || "Untitled Internship",
-            company: companyCache.get(companyId) || "Company",
+
+            company:
+              data.companyName || companyCache.get(companyId) || "Company",
+
             companyId,
+
             location: data.location || "Not specified",
+
             mode: data.mode || "Not specified",
+
             duration: Number(data.duration || 0),
+
             stipend: Number(data.stipend || 0),
+
             openings: Number(data.openings || 0),
+
             skills: Array.isArray(data.skills) ? data.skills : [],
+
             description: data.description || "",
+
             requirements: Array.isArray(data.requirements)
               ? data.requirements
               : [],
+
             status: data.status || "active",
           };
         },
@@ -145,7 +217,7 @@ export default function BrowseInternshipsPage() {
       setInternships(loadedInternships);
 
       // -----------------------------------------------------
-      // 4. Load applications belonging to current student
+      // 5. Load student's applications
       // -----------------------------------------------------
 
       const applicationQuery = query(
@@ -155,14 +227,61 @@ export default function BrowseInternshipsPage() {
 
       const applicationSnapshot = await getDocs(applicationQuery);
 
-      const existingApplicationIds = applicationSnapshot.docs
-        .map((applicationDoc) => {
-          const data = applicationDoc.data();
-          return data.internshipId;
-        })
+     const studentApplications: StudentApplication[] =
+       applicationSnapshot.docs.map((applicationDoc) => {
+         const data = applicationDoc.data();
+
+         return {
+           id: applicationDoc.id,
+           studentId: String(data.studentId ?? ""),
+           studentName: data.studentName,
+           studentEmail: data.studentEmail,
+           internshipId: String(data.internshipId ?? ""),
+           internshipTitle: data.internshipTitle,
+           companyId: data.companyId,
+           companyName: data.companyName,
+           resumeURL: data.resumeURL,
+           status: String(data.status ?? "pending"),
+         };
+       });
+
+      // -----------------------------------------------------
+      // 6. Existing applications
+      // -----------------------------------------------------
+
+      const existingApplicationIds = studentApplications
+        .map((application) => application.internshipId)
         .filter(Boolean);
 
       setAppliedIds(existingApplicationIds);
+
+      // -----------------------------------------------------
+      // 7. Determine active internship
+      //
+      // An application is considered active when it has
+      // progressed beyond simple application/rejection/withdrawal
+      // and the student has not completed the internship.
+      // -----------------------------------------------------
+
+      const activeApplication = studentApplications.find((application) =>
+        ["hr_shortlisted", "mentor_assigned", "accepted"].includes(
+          application.status,
+        ),
+      );
+
+      if (activeApplication) {
+        setHasActiveInternship(true);
+
+        setActiveInternshipTitle(
+          activeApplication.internshipTitle || "Current internship",
+        );
+
+        setActiveCompanyName(activeApplication.companyName || "Company");
+      } else {
+        setHasActiveInternship(false);
+        setActiveInternshipTitle("");
+        setActiveCompanyName("");
+      }
     } catch (err) {
       console.error("Failed to load internships:", err);
 
@@ -201,9 +320,11 @@ export default function BrowseInternshipsPage() {
   const handleApply = async (internship: Internship) => {
     try {
       setApplyingId(internship.id);
+
       setError("");
 
       const auth = getFirebaseAuth();
+
       const db = getFirebaseDb();
 
       const user = auth.currentUser;
@@ -213,7 +334,21 @@ export default function BrowseInternshipsPage() {
         return;
       }
 
+      // -----------------------------------------------------
+      // Prevent applying while another internship is active
+      // -----------------------------------------------------
+
+      if (hasActiveInternship) {
+        setError(
+          `You already have an active internship (${activeInternshipTitle} at ${activeCompanyName}). Complete the current internship before applying for another one.`,
+        );
+        return;
+      }
+
+      // -----------------------------------------------------
       // Prevent duplicate application
+      // -----------------------------------------------------
+
       if (appliedIds.includes(internship.id)) {
         return;
       }
@@ -224,18 +359,46 @@ export default function BrowseInternshipsPage() {
 
       const applicationData = {
         studentId: user.uid,
-        internshipId: internship.id,
-        companyId: internship.companyId || "",
-        status: "applied",
 
-        // AI matching will be added/updated by the HR workflow.
+        studentName:
+          student?.displayName ??
+          student?.name ??
+          user.displayName ??
+          "Student",
+
+        studentEmail: student?.email ?? user.email ?? "",
+
+        internshipId: internship.id,
+
+        internshipTitle: internship.title,
+
+        companyId: internship.companyId ?? "",
+
+        companyName: internship.company,
+
+        resumeURL: student?.resumeURL ?? "",
+
+        status: "pending",
+
+        /*
+         * Candidate matching is intentionally not
+         * fabricated here.
+         *
+         * HR can run the real Gemini candidate-matching
+         * workflow after the application exists.
+         */
         candidateMatch: null,
+
         matchScore: null,
+
         matchedSkills: [],
+
         missingSkills: [],
+
         matchReasoning: "",
 
-        createdAt: serverTimestamp(),
+        appliedAt: serverTimestamp(),
+
         updatedAt: serverTimestamp(),
       };
 
@@ -253,11 +416,15 @@ export default function BrowseInternshipsPage() {
       try {
         await updateDoc(doc(db, "internships", internship.id), {
           applicantsCount: increment(1),
+
           updatedAt: serverTimestamp(),
         });
       } catch (countError) {
-        // Application was already created, so don't show
-        // the student a failed application message.
+        /*
+         * The application already exists.
+         * Do not tell the student that the application failed
+         * just because the counter update failed.
+         */
         console.error(
           "Application created, but applicant count could not be updated:",
           countError,
@@ -287,7 +454,11 @@ export default function BrowseInternshipsPage() {
   // ---------------------------------------------------------
 
   const filteredInternships = internships.filter((item) => {
-    const search = queryText.toLowerCase();
+    const search = queryText.trim().toLowerCase();
+
+    if (!search) {
+      return true;
+    }
 
     return (
       item.title.toLowerCase().includes(search) ||
@@ -302,8 +473,27 @@ export default function BrowseInternshipsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Active Internship Warning */}
+      {hasActiveInternship && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900 shadow-sm">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+
+          <div className="space-y-0.5">
+            <p className="text-sm font-bold text-amber-950">
+              Active Internship in Progress
+            </p>
+
+            <p className="leading-relaxed text-amber-800">
+              You already have an active internship ({activeInternshipTitle} at{" "}
+              {activeCompanyName}). You can apply for another internship after
+              completing the current internship.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-xl font-bold text-slate-900">
             Browse Internships
@@ -318,7 +508,7 @@ export default function BrowseInternshipsPage() {
           <Input
             placeholder="Search role, company or skill..."
             value={queryText}
-            onChange={(e) => setQueryText(e.target.value)}
+            onChange={(event) => setQueryText(event.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
           />
         </div>
@@ -326,17 +516,19 @@ export default function BrowseInternshipsPage() {
 
       {/* Error */}
       {error && (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-red-600">{error}</p>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex items-start gap-3 p-4">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+
+            <p className="text-sm text-red-700">{error}</p>
           </CardContent>
         </Card>
       )}
 
-      {/* Loading */}
+      {/* Loading / Empty / Internship list */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          <Loader2 className="mr-2 h-6 w-6 animate-spin" />
 
           <span className="text-sm text-slate-600">Loading internships...</span>
         </div>
@@ -349,43 +541,43 @@ export default function BrowseInternshipsPage() {
           </CardContent>
         </Card>
       ) : (
-        /* Internship Cards */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {filteredInternships.map((item) => {
             const isApplied = appliedIds.includes(item.id);
+
             const isApplying = applyingId === item.id;
 
             return (
               <Card
                 key={item.id}
-                className="flex flex-col justify-between hover:border-blue-300 transition-all"
+                className="flex flex-col justify-between transition-all hover:border-blue-300"
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <Badge
                         variant="outline"
-                        className="text-[11px] font-semibold mb-2"
+                        className="mb-2 text-[11px] font-semibold"
                       >
                         Open Internship
                       </Badge>
 
-                      <CardTitle className="text-base font-bold text-slate-900 leading-snug">
+                      <CardTitle className="text-base font-bold leading-snug text-slate-900">
                         {item.title}
                       </CardTitle>
 
-                      <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      <p className="mt-0.5 text-xs font-medium text-slate-500">
                         {item.company}
                       </p>
                     </div>
 
-                    <div className="h-9 w-9 rounded-xl bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-xs font-bold text-blue-600">
                       {item.company.slice(0, 2).toUpperCase()}
                     </div>
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-3 pt-0 text-xs text-slate-600 flex-1">
+                <CardContent className="flex-1 space-y-3 pt-0 text-xs text-slate-600">
                   <p className="line-clamp-3 leading-relaxed">
                     {item.description}
                   </p>
@@ -393,6 +585,7 @@ export default function BrowseInternshipsPage() {
                   <div className="flex flex-wrap items-center gap-3 text-slate-500">
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5 text-slate-400" />
+
                       {item.location}
                     </span>
 
@@ -405,7 +598,8 @@ export default function BrowseInternshipsPage() {
 
                     {item.stipend > 0 && (
                       <span className="font-semibold text-slate-900">
-                        ₹{item.stipend.toLocaleString()}/mo
+                        ₹{item.stipend.toLocaleString()}
+                        /mo
                       </span>
                     )}
                   </div>
@@ -415,7 +609,7 @@ export default function BrowseInternshipsPage() {
                       <Badge
                         key={skill}
                         variant="secondary"
-                        className="text-[11px] bg-slate-100 text-slate-700"
+                        className="bg-slate-100 text-[11px] text-slate-700"
                       >
                         {skill}
                       </Badge>
@@ -423,7 +617,7 @@ export default function BrowseInternshipsPage() {
                   </div>
                 </CardContent>
 
-                <div className="p-6 pt-0 border-t border-slate-100 mt-3 flex items-center justify-between gap-2">
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 p-6 pt-4">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -434,22 +628,33 @@ export default function BrowseInternshipsPage() {
 
                   <Button
                     size="sm"
-                    disabled={isApplied || isApplying}
+                    disabled={isApplied || isApplying || hasActiveInternship}
                     onClick={() => handleApply(item)}
+                    title={
+                      hasActiveInternship
+                        ? "You already have an active internship."
+                        : undefined
+                    }
                     className={
-                      isApplied ? "bg-green-600 hover:bg-green-600" : ""
+                      isApplied
+                        ? "bg-green-600 hover:bg-green-600"
+                        : hasActiveInternship
+                          ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 hover:bg-slate-100"
+                          : ""
                     }
                   >
                     {isApplying ? (
                       <>
-                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                        <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
                         Applying...
                       </>
                     ) : isApplied ? (
                       <>
-                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
                         Applied
                       </>
+                    ) : hasActiveInternship ? (
+                      "Apply Disabled"
                     ) : (
                       "Apply Now"
                     )}
@@ -461,7 +666,7 @@ export default function BrowseInternshipsPage() {
         </div>
       )}
 
-      {/* Details Dialog */}
+      {/* Internship Details Dialog */}
       {selectedInternship && (
         <Dialog
           open={!!selectedInternship}
@@ -469,35 +674,54 @@ export default function BrowseInternshipsPage() {
         >
           <DialogContent className="max-w-2xl">
             <DialogHeader>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="text-xs capitalize">
+                  {selectedInternship.mode}
+                </Badge>
+
+                {selectedInternship.duration > 0 && (
+                  <Badge variant="secondary" className="text-xs">
+                    {selectedInternship.duration} weeks
+                  </Badge>
+                )}
+
+                {selectedInternship.stipend > 0 && (
+                  <Badge variant="secondary" className="text-xs">
+                    ₹{selectedInternship.stipend.toLocaleString()}
+                    /month
+                  </Badge>
+                )}
+              </div>
+
               <DialogTitle className="text-lg font-bold text-slate-900">
                 {selectedInternship.title}
               </DialogTitle>
 
               <DialogDescription>
-                {selectedInternship.company}
+                {selectedInternship.company} · {selectedInternship.location}
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-5 py-2">
               {/* Description */}
               <div>
-                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-700">
                   Description
                 </h4>
 
-                <p className="text-sm text-slate-600 leading-relaxed">
+                <p className="text-sm leading-relaxed text-slate-600">
                   {selectedInternship.description}
                 </p>
               </div>
 
               {/* Requirements */}
               <div>
-                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-700">
                   Requirements
                 </h4>
 
                 {selectedInternship.requirements.length > 0 ? (
-                  <ul className="list-disc pl-5 space-y-1">
+                  <ul className="list-disc space-y-1 pl-5">
                     {selectedInternship.requirements.map(
                       (requirement, index) => (
                         <li
@@ -518,7 +742,7 @@ export default function BrowseInternshipsPage() {
 
               {/* Skills */}
               <div>
-                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-700">
                   Required Skills
                 </h4>
 
@@ -537,14 +761,14 @@ export default function BrowseInternshipsPage() {
                 </div>
               </div>
 
-              {/* AI notice */}
-              <Card className="bg-slate-50 border-slate-200">
+              {/* AI workflow notice */}
+              <Card className="border-slate-200 bg-slate-50">
                 <CardContent className="p-4">
                   <p className="text-sm font-semibold text-slate-800">
                     AI Candidate Matching
                   </p>
 
-                  <p className="text-xs text-slate-600 mt-1">
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600">
                     After you apply, the HR team can run the AI
                     candidate-matching analysis using your resume information
                     and this internship's requirements.
@@ -563,11 +787,19 @@ export default function BrowseInternshipsPage() {
 
               <Button
                 onClick={() => handleApply(selectedInternship)}
-                disabled={appliedIds.includes(selectedInternship.id)}
+                disabled={
+                  appliedIds.includes(selectedInternship.id) ||
+                  applyingId === selectedInternship.id ||
+                  hasActiveInternship
+                }
               >
                 {appliedIds.includes(selectedInternship.id)
                   ? "Already Applied"
-                  : "Confirm Application"}
+                  : hasActiveInternship
+                    ? "Active Internship in Progress"
+                    : applyingId === selectedInternship.id
+                      ? "Applying..."
+                      : "Confirm Application"}
               </Button>
             </DialogFooter>
           </DialogContent>
