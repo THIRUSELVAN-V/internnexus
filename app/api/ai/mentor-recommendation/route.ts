@@ -6,7 +6,9 @@ import { adminAuth, adminDb } from "@/lib/firebase/admin";
 export const runtime = "nodejs";
 export const maxDuration = 130;
 
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = "gemini-3.6-flash";
+
+const MAX_GEMINI_ATTEMPTS = 3;
 
 const mentorRecommendationSchema = z.object({
   recommendations: z.array(
@@ -32,7 +34,10 @@ function toStringArray(value: unknown): string[] {
     return [];
   }
 
-  return value.filter((item): item is string => typeof item === "string");
+  return value.filter(
+    (item): item is string =>
+      typeof item === "string" && item.trim().length > 0,
+  );
 }
 
 function getErrorMessage(error: unknown): string {
@@ -43,8 +48,16 @@ function getErrorMessage(error: unknown): string {
   return "An unexpected error occurred.";
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function POST(request: Request) {
   try {
+    // =========================================================
+    // 1. Verify authentication
+    // =========================================================
+
     const authorization = request.headers.get("authorization");
 
     if (!authorization?.startsWith("Bearer ")) {
@@ -69,12 +82,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // ---------------------------------------------------------
-    // 1. Verify logged-in user
-    // ---------------------------------------------------------
-
     const decodedToken = await adminAuth.verifyIdToken(token);
     const hrUid = decodedToken.uid;
+
+    // =========================================================
+    // 2. Get HR profile
+    // =========================================================
 
     const hrSnapshot = await adminDb.collection("users").doc(hrUid).get();
 
@@ -101,6 +114,19 @@ export async function POST(request: Request) {
       );
     }
 
+    const hrCompanyId =
+      typeof hrData.companyId === "string" ? hrData.companyId.trim() : "";
+
+    console.log("Mentor recommendation - HR:", {
+      hrUid,
+      hrRole,
+      hrCompanyId,
+    });
+
+    // =========================================================
+    // 3. Read request
+    // =========================================================
+
     const body = await request.json().catch(() => null);
 
     const applicationId =
@@ -116,9 +142,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // ---------------------------------------------------------
-    // 2. Get application
-    // ---------------------------------------------------------
+    console.log("Mentor recommendation - application:", applicationId);
+
+    // =========================================================
+    // 4. Get application
+    // =========================================================
 
     const applicationSnapshot = await adminDb
       .collection("applications")
@@ -138,15 +166,19 @@ export async function POST(request: Request) {
     const application = applicationSnapshot.data() ?? {};
 
     const studentId =
-      typeof application.studentId === "string" ? application.studentId : "";
+      typeof application.studentId === "string"
+        ? application.studentId.trim()
+        : "";
 
     const internshipId =
       typeof application.internshipId === "string"
-        ? application.internshipId
+        ? application.internshipId.trim()
         : "";
 
     const applicationCompanyId =
-      typeof application.companyId === "string" ? application.companyId : "";
+      typeof application.companyId === "string"
+        ? application.companyId.trim()
+        : "";
 
     if (!studentId || !internshipId) {
       return NextResponse.json(
@@ -159,19 +191,21 @@ export async function POST(request: Request) {
       );
     }
 
-    // ---------------------------------------------------------
-    // 3. HR company authorization
-    // ---------------------------------------------------------
-
-    const hrCompanyId =
-      typeof hrData.companyId === "string" ? hrData.companyId : "";
+    // =========================================================
+    // 5. Verify HR company access
+    // =========================================================
 
     if (
       hrRole === "hr" &&
-      hrCompanyId &&
-      applicationCompanyId &&
-      hrCompanyId !== applicationCompanyId
+      (!hrCompanyId ||
+        !applicationCompanyId ||
+        hrCompanyId !== applicationCompanyId)
     ) {
+      console.error("Mentor recommendation - company mismatch:", {
+        hrCompanyId,
+        applicationCompanyId,
+      });
+
       return NextResponse.json(
         {
           success: false,
@@ -182,9 +216,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // ---------------------------------------------------------
-    // 4. Get student profile
-    // ---------------------------------------------------------
+    // =========================================================
+    // 6. Get student
+    // =========================================================
 
     const studentSnapshot = await adminDb
       .collection("users")
@@ -208,9 +242,9 @@ export async function POST(request: Request) {
         ? student.resumeAnalysis
         : {};
 
-    // ---------------------------------------------------------
-    // 5. Get internship
-    // ---------------------------------------------------------
+    // =========================================================
+    // 7. Get internship
+    // =========================================================
 
     const internshipSnapshot = await adminDb
       .collection("internships")
@@ -230,13 +264,13 @@ export async function POST(request: Request) {
     const internship = internshipSnapshot.data() ?? {};
 
     const internshipCompanyId =
-      typeof internship.companyId === "string" ? internship.companyId : "";
+      typeof internship.companyId === "string"
+        ? internship.companyId.trim()
+        : "";
 
     if (
       hrRole === "hr" &&
-      hrCompanyId &&
-      internshipCompanyId &&
-      hrCompanyId !== internshipCompanyId
+      (!internshipCompanyId || internshipCompanyId !== hrCompanyId)
     ) {
       return NextResponse.json(
         {
@@ -247,39 +281,114 @@ export async function POST(request: Request) {
       );
     }
 
-    // ---------------------------------------------------------
-    // 6. Find mentors
-    // ---------------------------------------------------------
+    // =========================================================
+    // 8. Find mentors
+    // =========================================================
 
-    const mentorSnapshot = await adminDb
-      .collection("users")
-      .where("role", "==", "mentor")
-      .get();
+    const usersSnapshot = await adminDb.collection("users").get();
 
-    const mentorCandidates: MentorCandidate[] = [];
+    const allUsers = usersSnapshot.docs;
 
-    for (const mentorDoc of mentorSnapshot.docs) {
+    const mentorDocs = allUsers.filter((doc) => {
+      const data = doc.data() ?? {};
+      return data.role === "mentor";
+    });
+
+    console.log("Mentor recommendation - database diagnostics:", {
+      totalUsers: allUsers.length,
+      mentorCount: mentorDocs.length,
+      hrCompanyId,
+      mentors: mentorDocs.map((doc) => {
+        const data = doc.data() ?? {};
+
+        return {
+          documentId: doc.id,
+          uid: data.uid ?? null,
+          role: data.role ?? null,
+          companyId: data.companyId ?? null,
+          displayName: data.displayName ?? data.name ?? null,
+        };
+      }),
+    });
+
+    if (mentorDocs.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "No mentor users were found in the Firestore users collection.",
+        },
+        { status: 404 },
+      );
+    }
+
+    // =========================================================
+    // 9. Filter mentors by company
+    // =========================================================
+
+    const sameCompanyMentors = mentorDocs.filter((mentorDoc) => {
       const mentor = mentorDoc.data() ?? {};
 
       const mentorCompanyId =
-        typeof mentor.companyId === "string" ? mentor.companyId : "";
+        typeof mentor.companyId === "string" ? mentor.companyId.trim() : "";
 
-      // For HR users, recommend mentors belonging to the same company.
-      if (
-        hrRole === "hr" &&
-        hrCompanyId &&
-        mentorCompanyId &&
-        mentorCompanyId !== hrCompanyId
-      ) {
-        continue;
+      if (hrRole === "admin") {
+        return true;
       }
 
+      return mentorCompanyId === hrCompanyId;
+    });
+
+    console.log("Mentor recommendation - company filtering:", {
+      hrCompanyId,
+      mentorCount: mentorDocs.length,
+      sameCompanyMentorCount: sameCompanyMentors.length,
+      sameCompanyMentors: sameCompanyMentors.map((doc) => {
+        const data = doc.data() ?? {};
+
+        return {
+          documentId: doc.id,
+          uid: data.uid ?? null,
+          displayName: data.displayName ?? data.name ?? null,
+          companyId: data.companyId ?? null,
+        };
+      }),
+    });
+
+    if (sameCompanyMentors.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `No mentors are assigned to company "${hrCompanyId}".`,
+        },
+        { status: 404 },
+      );
+    }
+
+    // =========================================================
+    // 10. Build available mentor candidates
+    // =========================================================
+
+    const mentorCandidates: MentorCandidate[] = [];
+
+    for (const mentorDoc of sameCompanyMentors) {
+      const mentor = mentorDoc.data() ?? {};
+
+      const mentorId =
+        typeof mentor.uid === "string" && mentor.uid.trim()
+          ? mentor.uid.trim()
+          : mentorDoc.id;
+
       const mentorName =
-        typeof mentor.name === "string" ? mentor.name : "Unnamed Mentor";
+        typeof mentor.displayName === "string" && mentor.displayName.trim()
+          ? mentor.displayName.trim()
+          : typeof mentor.name === "string" && mentor.name.trim()
+            ? mentor.name.trim()
+            : "Unnamed Mentor";
 
       const designation =
-        typeof mentor.designation === "string"
-          ? mentor.designation
+        typeof mentor.designation === "string" && mentor.designation.trim()
+          ? mentor.designation.trim()
           : "Industrial Mentor";
 
       const expertise = [
@@ -288,38 +397,89 @@ export async function POST(request: Request) {
       ].filter((value, index, array) => array.indexOf(value) === index);
 
       const maxMentees =
-        typeof mentor.maxMentees === "number" && mentor.maxMentees > 0
+        typeof mentor.maxMentees === "number" &&
+        Number.isFinite(mentor.maxMentees) &&
+        mentor.maxMentees > 0
           ? mentor.maxMentees
           : 5;
 
-      // Count applications currently assigned to this mentor.
-      const workloadSnapshot = await adminDb
+      // -------------------------------------------------------
+      // Workload query using mentor UID
+      // -------------------------------------------------------
+
+      const workloadByMentorId = await adminDb
         .collection("applications")
-        .where("mentorId", "==", mentorDoc.id)
+        .where("mentorId", "==", mentorId)
         .get();
 
-      const currentWorkload = workloadSnapshot.docs.filter((doc: any) => {
-        const data = doc.data() ?? {};
+      // Also check document ID in case older data used it.
+      const workloadByDocumentId =
+        mentorId !== mentorDoc.id
+          ? await adminDb
+              .collection("applications")
+              .where("mentorId", "==", mentorDoc.id)
+              .get()
+          : null;
 
-        const status =
-          typeof data.status === "string" ? data.status.toLowerCase() : "";
+      const workloadDocuments = new Map<
+        string,
+        (typeof workloadByMentorId.docs)[number]
+      >();
 
-        // Completed/rejected applications should not consume
-        // active mentor capacity.
-        return (
-          status !== "completed" &&
-          status !== "rejected" &&
-          status !== "withdrawn"
-        );
-      }).length;
+      for (const doc of workloadByMentorId.docs) {
+        workloadDocuments.set(doc.id, doc);
+      }
 
-      // Skip mentors who have no available capacity.
+      if (workloadByDocumentId) {
+        for (const doc of workloadByDocumentId.docs) {
+          workloadDocuments.set(doc.id, doc);
+        }
+      }
+
+      const activeApplications = Array.from(workloadDocuments.values()).filter(
+        (applicationDoc) => {
+          const data = applicationDoc.data() ?? {};
+
+          const status =
+            typeof data.status === "string"
+              ? data.status.trim().toLowerCase()
+              : "";
+
+          const assignedMentorId =
+            typeof data.mentorId === "string" ? data.mentorId.trim() : "";
+
+          if (
+            assignedMentorId !== mentorId &&
+            assignedMentorId !== mentorDoc.id
+          ) {
+            return false;
+          }
+
+          return !["completed", "rejected", "withdrawn"].includes(status);
+        },
+      );
+
+      const currentWorkload = activeApplications.length;
+
+      console.log("Mentor workload:", {
+        mentorId,
+        mentorDocumentId: mentorDoc.id,
+        mentorName,
+        maxMentees,
+        currentWorkload,
+        applicationIds: activeApplications.map((doc) => doc.id),
+      });
+
       if (currentWorkload >= maxMentees) {
+        console.log(
+          `Mentor "${mentorName}" skipped because workload ${currentWorkload}/${maxMentees} is full.`,
+        );
+
         continue;
       }
 
       mentorCandidates.push({
-        mentorId: mentorDoc.id,
+        mentorId,
         mentorName,
         designation,
         expertise,
@@ -328,38 +488,58 @@ export async function POST(request: Request) {
       });
     }
 
+    console.log("Mentor recommendation - final candidates:", mentorCandidates);
+
     if (mentorCandidates.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: "No available mentors were found for this company.",
+          error:
+            "Mentors were found for the company, but all available mentors have reached their maximum mentee capacity.",
         },
-        { status: 404 },
+        { status: 409 },
       );
     }
 
-    // ---------------------------------------------------------
-    // 7. Prepare AI input
-    // ---------------------------------------------------------
+    // =========================================================
+    // 11. Prepare AI input
+    // =========================================================
 
     const candidateData = {
       student: {
-        name: typeof student.name === "string" ? student.name : "",
+        name:
+          typeof student.displayName === "string"
+            ? student.displayName
+            : typeof student.name === "string"
+              ? student.name
+              : "",
+
         skills: toStringArray(resumeAnalysis.skills),
+
         technicalSkills: toStringArray(resumeAnalysis.technicalSkills),
+
         programmingLanguages: toStringArray(
           resumeAnalysis.programmingLanguages,
         ),
+
         frameworks: toStringArray(resumeAnalysis.frameworks),
-        databases: toStringArray(resumeAnalysis.databases),
+
+        technologies: toStringArray(resumeAnalysis.technologies),
+
         tools: toStringArray(resumeAnalysis.tools),
+
+        domains: toStringArray(resumeAnalysis.domains),
+
         projects: Array.isArray(resumeAnalysis.projects)
           ? resumeAnalysis.projects
           : [],
-        experience: Array.isArray(resumeAnalysis.workExperience)
-          ? resumeAnalysis.workExperience
+
+        experience: Array.isArray(resumeAnalysis.experience)
+          ? resumeAnalysis.experience
           : [],
+
         certifications: toStringArray(resumeAnalysis.certifications),
+
         summary:
           typeof resumeAnalysis.summary === "string"
             ? resumeAnalysis.summary
@@ -368,21 +548,25 @@ export async function POST(request: Request) {
 
       internship: {
         title: typeof internship.title === "string" ? internship.title : "",
+
         domain: typeof internship.domain === "string" ? internship.domain : "",
+
         description:
           typeof internship.description === "string"
             ? internship.description
             : "",
+
         requirements: toStringArray(internship.requirements),
+
         skills: toStringArray(internship.skills),
       },
 
       mentors: mentorCandidates,
     };
 
-    // ---------------------------------------------------------
-    // 8. Ask Gemini to rank mentors
-    // ---------------------------------------------------------
+    // =========================================================
+    // 12. Gemini API key
+    // =========================================================
 
     const apiKey = process.env.GEMINI_API_KEY;
 
@@ -398,31 +582,37 @@ export async function POST(request: Request) {
       );
     }
 
+    // =========================================================
+    // 13. AI prompt
+    // =========================================================
+
     const prompt = `
 You are an AI mentor recommendation assistant for an internship management portal.
 
 Your task is to recommend suitable industrial mentors for a student.
 
-Use the following factors:
+Evaluate:
 
 1. Student skills and technical background.
-2. Internship domain and requirements.
-3. Mentor expertise and designation.
-4. Mentor's current workload and maximum mentee capacity.
+2. Student projects and experience.
+3. Internship domain and requirements.
+4. Mentor expertise and designation.
+5. Mentor current workload and maximum mentee capacity.
 
-Important rules:
+Rules:
 
 - Recommend ONLY mentors from the provided mentor list.
 - Never invent a mentor.
-- The mentorId in your response MUST exactly match one of the provided mentor IDs.
-- Do not modify mentor names, designations, expertise, workload, or capacity.
-- A mentor with greater relevant expertise should receive stronger consideration.
-- Available capacity should also be considered.
-- The matchScore must represent the overall suitability from 0 to 100.
-- Explain the recommendation using only the supplied information.
+- The mentorId MUST exactly match one of the provided mentor IDs.
+- Do not modify mentor information.
+- Consider relevant technical expertise strongly.
+- Consider internship requirements and domain.
+- Consider mentor workload and available capacity.
+- matchScore must be between 0 and 100.
+- Explain every recommendation using only the supplied information.
 - Do not make hiring decisions.
-- The HR user will make the final mentor assignment decision.
-- Return the mentors ordered by rank, with rank 1 being the first recommendation.
+- The HR user makes the final mentor assignment decision.
+- Return recommendations in descending suitability order.
 - Return at most 5 recommendations.
 
 Student and internship information:
@@ -442,99 +632,211 @@ Return ONLY valid JSON in this exact structure:
 }
 `;
 
-    const controller = new AbortController();
+    // =========================================================
+    // 14. Gemini request with automatic retry
+    // =========================================================
 
-    const timeout = setTimeout(() => {
-      controller.abort();
-    }, 120000);
+    let geminiResponse: Response | null = null;
+    let lastGeminiError = "";
 
-    let geminiResponse: Response;
+    for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt++) {
+      const controller = new AbortController();
 
-    try {
-      geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey,
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  {
-                    text: prompt,
-                  },
-                ],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.2,
-              responseMimeType: "application/json",
-              responseJsonSchema: {
-                type: "object",
-                additionalProperties: false,
-                required: ["recommendations"],
-                properties: {
-                  recommendations: {
-                    type: "array",
-                    maxItems: 5,
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      required: ["mentorId", "matchScore", "reasoning"],
-                      properties: {
-                        mentorId: {
-                          type: "string",
-                        },
-                        matchScore: {
-                          type: "number",
-                          minimum: 0,
-                          maximum: 100,
-                        },
-                        reasoning: {
-                          type: "string",
+      const timeout = setTimeout(() => {
+        controller.abort();
+      }, 120000);
+
+      try {
+        console.log(
+          `Gemini mentor recommendation attempt ${attempt}/${MAX_GEMINI_ATTEMPTS}`,
+        );
+
+        geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKey,
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  role: "user",
+                  parts: [
+                    {
+                      text: prompt,
+                    },
+                  ],
+                },
+              ],
+
+              generationConfig: {
+                responseMimeType: "application/json",
+
+                responseJsonSchema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["recommendations"],
+
+                  properties: {
+                    recommendations: {
+                      type: "array",
+                      maxItems: 5,
+
+                      items: {
+                        type: "object",
+                        additionalProperties: false,
+
+                        required: ["mentorId", "matchScore", "reasoning"],
+
+                        properties: {
+                          mentorId: {
+                            type: "string",
+                          },
+
+                          matchScore: {
+                            type: "number",
+                            minimum: 0,
+                            maximum: 100,
+                          },
+
+                          reasoning: {
+                            type: "string",
+                          },
                         },
                       },
                     },
                   },
                 },
               },
-            },
-          }),
-          signal: controller.signal,
+            }),
+
+            signal: controller.signal,
+          },
+        );
+
+        if (geminiResponse.ok) {
+          break;
+        }
+
+        lastGeminiError = await geminiResponse.text();
+
+        console.error("Gemini attempt failed:", {
+          attempt,
+          status: geminiResponse.status,
+          statusText: geminiResponse.statusText,
+          body: lastGeminiError,
+        });
+
+        // Retry only temporary failures.
+        const shouldRetry =
+          geminiResponse.status === 503 || geminiResponse.status === 429;
+
+        if (!shouldRetry || attempt >= MAX_GEMINI_ATTEMPTS) {
+          break;
+        }
+
+        // 2s → 4s
+        const delayMs = 2000 * 2 ** (attempt - 1);
+
+        console.warn(
+          `Gemini returned ${geminiResponse.status}. ` +
+            `Retrying in ${delayMs}ms...`,
+        );
+
+        await sleep(delayMs);
+      } catch (error) {
+        lastGeminiError = getErrorMessage(error);
+
+        console.error("Gemini request error:", {
+          attempt,
+          error: lastGeminiError,
+        });
+
+        if (attempt >= MAX_GEMINI_ATTEMPTS) {
+          break;
+        }
+
+        const delayMs = 2000 * 2 ** (attempt - 1);
+
+        console.warn(`Retrying Gemini request in ${delayMs}ms...`);
+
+        await sleep(delayMs);
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    // =========================================================
+    // 15. Gemini unavailable
+    // =========================================================
+
+    if (!geminiResponse) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unable to connect to the Gemini AI service.",
         },
+        { status: 502 },
       );
-    } finally {
-      clearTimeout(timeout);
     }
 
     if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
+      console.error("Gemini mentor recommendation failed after retries:", {
+        status: geminiResponse.status,
+        statusText: geminiResponse.statusText,
+        body: lastGeminiError,
+      });
 
-      console.error(
-        "Gemini mentor recommendation failed:",
-        geminiResponse.status,
-        errorText,
-      );
+      if (geminiResponse.status === 503) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Gemini is temporarily overloaded. Please try again in a moment.",
+          },
+          { status: 503 },
+        );
+      }
 
       if (geminiResponse.status === 429) {
         return NextResponse.json(
           {
             success: false,
-            error: "The AI service is temporarily busy. Please try again.",
+            error:
+              "The Gemini API rate limit was reached. Please try again shortly.",
           },
           { status: 429 },
         );
       }
 
-      if (geminiResponse.status >= 500 || geminiResponse.status === 504) {
+      if (geminiResponse.status === 401 || geminiResponse.status === 403) {
         return NextResponse.json(
           {
             success: false,
-            error: "The AI service is temporarily unavailable.",
+            error: "The Gemini API key was rejected. Check GEMINI_API_KEY.",
+          },
+          { status: 502 },
+        );
+      }
+
+      if (geminiResponse.status === 404) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `The Gemini model "${GEMINI_MODEL}" is unavailable.`,
+          },
+          { status: 502 },
+        );
+      }
+
+      if (geminiResponse.status === 400) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Gemini rejected the mentor recommendation request because the request data was invalid.",
           },
           { status: 502 },
         );
@@ -549,12 +851,21 @@ Return ONLY valid JSON in this exact structure:
       );
     }
 
+    // =========================================================
+    // 16. Parse Gemini response
+    // =========================================================
+
     const geminiPayload = await geminiResponse.json();
 
     const generatedText =
       geminiPayload?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    if (typeof generatedText !== "string") {
+    if (typeof generatedText !== "string" || !generatedText.trim()) {
+      console.error(
+        "Gemini returned unexpected response:",
+        JSON.stringify(geminiPayload),
+      );
+
       throw new Error(
         "Gemini returned an empty mentor recommendation response.",
       );
@@ -565,10 +876,16 @@ Return ONLY valid JSON in this exact structure:
     try {
       parsedResponse = JSON.parse(generatedText);
     } catch {
+      console.error("Invalid Gemini JSON:", generatedText);
+
       throw new Error(
         "Gemini returned invalid JSON for mentor recommendations.",
       );
     }
+
+    // =========================================================
+    // 17. Validate AI result
+    // =========================================================
 
     const validated = mentorRecommendationSchema.safeParse(parsedResponse);
 
@@ -583,9 +900,9 @@ Return ONLY valid JSON in this exact structure:
       );
     }
 
-    // ---------------------------------------------------------
-    // 9. Convert AI IDs back to trusted Firestore mentor data
-    // ---------------------------------------------------------
+    // =========================================================
+    // 18. Trust only mentors we supplied to Gemini
+    // =========================================================
 
     const mentorMap = new Map(
       mentorCandidates.map((mentor) => [mentor.mentorId, mentor]),
@@ -613,14 +930,18 @@ Return ONLY valid JSON in this exact structure:
       throw new Error("The AI did not return any valid available mentors.");
     }
 
-    // ---------------------------------------------------------
-    // 10. Save recommendation result
-    // ---------------------------------------------------------
+    // =========================================================
+    // 19. Save recommendations to application
+    // =========================================================
 
     await adminDb.collection("applications").doc(applicationId).update({
       mentorRecommendations: recommendations,
       mentorRecommendationUpdatedAt: FieldValue.serverTimestamp(),
     });
+
+    // =========================================================
+    // 20. Return success
+    // =========================================================
 
     return NextResponse.json({
       success: true,
