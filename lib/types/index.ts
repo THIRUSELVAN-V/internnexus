@@ -291,6 +291,7 @@ export interface Submission {
   fileURLs: string[];
   fileTypes: string[];
   description?: string;
+  submissionLink?: string;
   status: TaskStatus;
   aiAnalysis?: SubmissionAnalysis;
   mentorFeedback?: string;
@@ -349,12 +350,16 @@ export interface Certificate {
 export interface Notification {
   id: string;
   userId: string;
+  recipientUserId?: string;
+  recipientRole?: UserRole;
   title: string;
   message: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  category: 'application' | 'task' | 'feedback' | 'assignment' | 'certificate' | 'system';
+  type?: 'info' | 'success' | 'warning' | 'error' | string;
+  category?: 'application' | 'task' | 'feedback' | 'assignment' | 'certificate' | 'system' | string;
   read: boolean;
   link?: string;
+  relatedId?: string;
+  relatedType?: string;
   createdAt: string;
 }
 
@@ -367,6 +372,7 @@ export interface ResumeAnalysis {
   softSkills: string[];
   programmingLanguages?: string[];
   frameworks?: string[];
+  databases?: string[];
   technologies?: string[];
   tools?: string[];
   domains?: string[];
@@ -374,6 +380,8 @@ export interface ResumeAnalysis {
     degree: string;
     institution: string;
     field?: string;
+    fieldOfStudy?: string;
+    dates?: string;
     year?: number;
     gpa?: number;
   }[];
@@ -382,6 +390,18 @@ export interface ResumeAnalysis {
     company: string;
     duration: string;
     description: string;
+  }[];
+  workExperience?: {
+    title: string;
+    company: string;
+    duration?: string;
+    description?: string;
+  }[];
+  internships?: {
+    title: string;
+    company: string;
+    duration?: string;
+    description?: string;
   }[];
   projects: {
     name: string;
@@ -395,6 +415,9 @@ export interface ResumeAnalysis {
   strengths: string[];
   improvements: string[];
   analyzedAt: string;
+  fileName?: string;
+  error?: string;
+  failedAt?: any;
 }
 
 export interface CandidateMatch {

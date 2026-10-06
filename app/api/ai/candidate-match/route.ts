@@ -166,18 +166,18 @@ export async function POST(request: NextRequest) {
 
     const internshipSnapshot = await internshipRef.get();
 
-    if (!internshipSnapshot.exists) {
+    const internshipData = internshipSnapshot.data();
+
+    if (!internshipSnapshot.exists || !internshipData) {
       return NextResponse.json(
         { error: "Internship not found." },
         { status: 404 },
       );
     }
 
-    const internshipData = internshipSnapshot.data();
-
     console.log("Internship data:", {
       internshipId,
-      title: internshipData?.title,
+      title: internshipData.title,
     });
 
     // 8. Prepare candidate information

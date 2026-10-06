@@ -5,6 +5,25 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function formatTimestamp(val: any, fallback = ''): string {
+  if (!val) return fallback;
+  if (typeof val === 'string') return val;
+  if (typeof val.toDate === 'function') {
+    try {
+      return val.toDate().toISOString();
+    } catch {
+      return fallback;
+    }
+  }
+  if (val instanceof Date) {
+    return val.toISOString();
+  }
+  if (typeof val.seconds === 'number') {
+    return new Date(val.seconds * 1000).toISOString();
+  }
+  return String(val);
+}
+
 export function formatDate(dateString: string): string {
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', {

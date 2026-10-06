@@ -1,5 +1,8 @@
 import type { User } from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { getFirebaseDb } from "@/lib/firebase/config";
 import type { ResumeAnalysis } from "@/lib/types";
+import { extractTextFromResumeFile } from "@/lib/utils/resumeExtractor";
 
 const MAX_RESUME_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -17,6 +20,43 @@ export interface ResumeAnalyzeResult {
     fileName: string;
     contentType: "application/pdf";
     size: number;
+  };
+}
+
+/**
+ * Analyzes a resume file or raw text string in-memory without uploading to permanent storage.
+ * Used during user registration or instant skill parsing.
+ */
+export async function analyzeResume(
+  resumeTextOrFile: string | File
+): Promise<ResumeAnalysis> {
+  let resumeText: string;
+
+  if (typeof resumeTextOrFile === "string") {
+    resumeText = resumeTextOrFile;
+  } else {
+    resumeText = await extractTextFromResumeFile(resumeTextOrFile);
+  }
+
+  const response = await fetch("/api/ai/analyze-resume", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ resumeText }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.error || `Resume analysis failed (HTTP ${response.status})`
+    );
+  }
+
+  const result = (await response.json()) as ResumeAnalysis;
+  return {
+    ...result,
+    status: result.status || "completed",
   };
 }
 
@@ -49,113 +89,70 @@ export async function uploadAndAnalyzeResume(
   }
 
   // --------------------------------------------------
-  // 3. Show upload progress
+  // 3. Extract text & run AI analysis
   // --------------------------------------------------
 
-  onProgress?.(10);
+  onProgress?.(20);
 
-  // --------------------------------------------------
-  // 4. Get Firebase authentication token
-  // --------------------------------------------------
-
-  let token: string;
+  let analysis: ResumeAnalysis;
 
   try {
-    // Force refresh so we don't accidentally send
-    // an expired Firebase ID token.
-    token = await user.getIdToken(true);
+    analysis = await analyzeResume(file);
   } catch (caught) {
-    console.error("Failed to get Firebase ID token:", caught);
-
+    console.error("Resume analysis execution failed:", caught);
     throw new ResumeUploadError(
-      "Your session has expired. Please sign in again.",
-    );
-  }
-
-  // --------------------------------------------------
-  // 5. Create multipart form data
-  // --------------------------------------------------
-
-  const formData = new FormData();
-
-  formData.append("resume", file, file.name);
-
-  // --------------------------------------------------
-  // 6. Send PDF to Next.js API
-  // --------------------------------------------------
-
-  let response: Response;
-
-  try {
-    response = await fetch("/api/resume/analyze", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    });
-  } catch (caught) {
-    console.error("Resume API request failed:", caught);
-
-    throw new ResumeUploadError(
-      "Network error while sending the resume. Please try again.",
+      caught instanceof Error
+        ? caught.message
+        : "Resume analysis failed. Please try again."
     );
   }
 
   onProgress?.(70);
 
   // --------------------------------------------------
-  // 7. Read API response
+  // 4. Save analysis & resume metadata to Firestore
   // --------------------------------------------------
 
-  const payload = (await response.json().catch(() => ({}))) as {
-    analysis?: ResumeAnalysis & {
-      fileName?: string;
-    };
-    error?: string;
+  const resumeData = {
+    fileName: file.name.slice(0, 200),
+    contentType: "application/pdf" as const,
+    size: file.size,
   };
 
-  // --------------------------------------------------
-  // 8. Handle API errors
-  // --------------------------------------------------
-
-  if (!response.ok) {
-    console.error("Resume API failed:", response.status, payload);
-
-    if (response.status === 401) {
-      throw new ResumeUploadError(
-        "Your session has expired. Please sign in again.",
-      );
-    }
-
-    throw new ResumeUploadError(
-      payload.error ?? `Resume analysis failed (HTTP ${response.status}).`,
+  try {
+    const db = getFirebaseDb();
+    await setDoc(
+      doc(db, "users", user.uid),
+      {
+        resume: {
+          ...resumeData,
+          analyzedAt: new Date().toISOString(),
+        },
+        resumeAnalysis: {
+          ...analysis,
+          status: "completed",
+          fileName: resumeData.fileName,
+          analyzedAt: new Date().toISOString(),
+        },
+        skills: analysis.skills || [],
+        resumeAnalyzed: true,
+        resumeAnalyzedAt: new Date().toISOString(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
     );
+  } catch (firestoreErr) {
+    console.warn("Failed to persist resume analysis to Firestore:", firestoreErr);
   }
-
-  if (!payload.analysis) {
-    throw new ResumeUploadError("The AI did not return a resume analysis.");
-  }
-
-  // --------------------------------------------------
-  // 9. Complete progress
-  // --------------------------------------------------
 
   onProgress?.(100);
 
   // --------------------------------------------------
-  // 10. Return analysis
+  // 5. Return structured analysis result
   // --------------------------------------------------
 
   return {
-    analysis: payload.analysis,
-
-    resume: {
-      fileName: payload.analysis.fileName ?? file.name,
-
-      contentType: "application/pdf",
-
-      size: file.size,
-    },
+    analysis,
+    resume: resumeData,
   };
 }

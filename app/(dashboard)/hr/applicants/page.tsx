@@ -22,6 +22,8 @@ import {
 
 import { matchCandidateWithInternship } from "@/lib/ai/candidateMatch";
 import type { Application, CandidateMatch } from "@/lib/types";
+import { formatTimestamp } from "@/lib/utils/formatters";
+import { createNotification } from "@/lib/firebase/notifications";
 
 interface ApplicantRow {
   id: string;
@@ -196,6 +198,8 @@ export default function HRApplicantsPage() {
             score = Number.isFinite(numericScore) ? numericScore : undefined;
           }
 
+          const appliedAtStr = formatTimestamp(data.appliedAt);
+
           return {
             id: applicationDoc.id,
             name: studentName || "Unknown Student",
@@ -203,10 +207,11 @@ export default function HRApplicantsPage() {
             college: college || "College not available",
             score,
             status: data.status || "pending",
-            appliedAt: data.appliedAt || "",
+            appliedAt: appliedAtStr,
             application: {
               ...data,
               id: applicationDoc.id,
+              appliedAt: appliedAtStr,
             },
             candidateMatch,
           } as ApplicantRow;
@@ -214,7 +219,11 @@ export default function HRApplicantsPage() {
       );
 
       // Newest applications first
-      rows.sort((a, b) => b.appliedAt.localeCompare(a.appliedAt));
+      rows.sort((a, b) => {
+        const timeA = a.appliedAt ? new Date(a.appliedAt).getTime() : 0;
+        const timeB = b.appliedAt ? new Date(b.appliedAt).getTime() : 0;
+        return timeB - timeA;
+      });
 
       setApplicants(rows);
     } catch (err) {
@@ -307,6 +316,23 @@ export default function HRApplicantsPage() {
         status: "hr_shortlisted",
         updatedAt: new Date().toISOString(),
       });
+
+      const target = applicants.find((applicant) => applicant.id === applicationId);
+      if (target?.application?.studentId) {
+        const companyName = target.application.companyName || "the company";
+        const internshipTitle = target.role || target.application.internshipTitle || "Internship";
+        createNotification({
+          recipientUserId: target.application.studentId,
+          recipientRole: "student",
+          title: "Application Shortlisted",
+          message: `Your application for ${internshipTitle} at ${companyName} has been shortlisted.`,
+          type: "success",
+          category: "application",
+          link: "/student/applications",
+          relatedId: applicationId,
+          relatedType: "application",
+        }).catch((notifyErr) => console.error("Failed to notify shortlisted student:", notifyErr));
+      }
 
       setApplicants((currentApplicants) =>
         currentApplicants.map((applicant) =>

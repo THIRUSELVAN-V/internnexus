@@ -16,6 +16,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments } from '@/lib/firebase/firestore';
 import { Application, Task, MentorAssignment, Certificate, StudentProfile } from '@/lib/types';
 import { getStudentLifecycleState, calculateTaskProgress } from '@/lib/utils/constants';
+import { formatTimestamp } from '@/lib/utils/formatters';
 
 export default function StudentDashboardPage() {
   const { profile } = useAuthContext();
@@ -257,7 +258,9 @@ export default function StudentDashboardPage() {
                           </div>
                           <div>
                             <h4 className="text-sm font-bold text-slate-900">{app.internshipTitle}</h4>
-                            <p className="text-xs text-slate-500">{app.companyName} · Applied {app.appliedAt?.slice(0, 10)}</p>
+                            <p className="text-xs text-slate-500">
+                              {app.companyName} · Applied {formatTimestamp(app.appliedAt).slice(0, 10) || 'Recently'}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">

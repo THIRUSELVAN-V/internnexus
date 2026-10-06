@@ -30,6 +30,7 @@ import type {
   HRProfile,
   Internship,
 } from "@/lib/types";
+import { formatTimestamp } from "@/lib/utils/formatters";
 
 interface ApplicantData {
   application: Application;
@@ -132,6 +133,7 @@ export default function HRApplicantDetailPage({
         const application = {
           ...applicationData,
           id: applicationId,
+          appliedAt: formatTimestamp(applicationData?.appliedAt),
         } as Application;
 
         // ---------------------------------------------------

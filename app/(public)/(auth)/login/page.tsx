@@ -156,24 +156,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Demo accounts */}
-          <div className="mt-6 p-4 rounded-xl bg-slate-50 border border-slate-200">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">Demo Accounts</p>
-            <div className="space-y-1.5">
-              {[
-                { role: 'Student', email: 'student@demo.com' },
-                { role: 'HR', email: 'hr@demo.com' },
-                { role: 'Mentor', email: 'mentor@demo.com' },
-                { role: 'Admin', email: 'admin@demo.com' },
-              ].map((d) => (
-                <div key={d.role} className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-medium">{d.role}</span>
-                  <span className="text-slate-400 font-mono">{d.email} · demo123</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
           <p className="mt-6 text-center text-sm text-slate-500">
             Don&apos;t have an account?{' '}
             <Link href="/register" className="text-blue-600 font-medium hover:text-blue-700">

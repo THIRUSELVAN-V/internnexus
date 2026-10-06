@@ -25,6 +25,7 @@ import {
 } from "firebase/firestore";
 
 import { recommendMentors } from "@/lib/ai/mentorRecommend";
+import { createNotification } from "@/lib/firebase/notifications";
 
 import type { Application, MentorRecommendation } from "@/lib/types";
 
@@ -438,6 +439,34 @@ function HRMentorRecommendationContent() {
 
         updatedAt: serverTimestamp(),
       });
+
+      // Notify the assigned mentor
+      createNotification({
+        recipientUserId: selectedRecommendation.mentorId,
+        recipientRole: "mentor",
+        title: "New Mentee Assigned",
+        message: `You have been assigned to mentor ${applicationData.studentName || studentName} for ${applicationData.internshipTitle || "Internship"}.`,
+        type: "info",
+        category: "assignment",
+        link: "/mentor/interns",
+        relatedId: applicationId,
+        relatedType: "application",
+      }).catch((notifyErr) => console.error("Failed to notify mentor:", notifyErr));
+
+      // Notify the student
+      if (applicationData.studentId) {
+        createNotification({
+          recipientUserId: applicationData.studentId,
+          recipientRole: "student",
+          title: "Mentor Assigned",
+          message: `${selectedRecommendation.mentorName} has been assigned as your industrial mentor.`,
+          type: "success",
+          category: "assignment",
+          link: "/student/mentor",
+          relatedId: applicationId,
+          relatedType: "application",
+        }).catch((notifyErr) => console.error("Failed to notify student of mentor assignment:", notifyErr));
+      }
 
       // ---------------------------------------------------
       // Update local state

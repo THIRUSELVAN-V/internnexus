@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import ProgressTimeline, { TimelineStep } from '@/components/shared/ProgressTimeline';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -12,6 +13,16 @@ import { Task, Application, Certificate, MentorAssignment, StudentProfile } from
 import { getStudentLifecycleState, calculateTaskProgress } from '@/lib/utils/constants';
 
 export default function StudentProgressPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace('/student/profile');
+  }, [router]);
+
+  return null;
+}
+
+function OldStudentProgressPage() {
   const { profile } = useAuthContext();
   const student = profile as StudentProfile;
   const [loading, setLoading] = useState(true);

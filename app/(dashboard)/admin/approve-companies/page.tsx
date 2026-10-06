@@ -11,6 +11,7 @@ import { Check, X, ShieldCheck, Eye, Loader2, RefreshCw } from 'lucide-react';
 import { getDocuments, updateDocument, subscribeToCollection, where } from '@/lib/firebase/firestore';
 import { Company, HRProfile } from '@/lib/types';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { createNotification } from '@/lib/firebase/notifications';
 
 export default function AdminApproveCompaniesPage() {
   const { profile } = useAuthContext();
@@ -57,6 +58,18 @@ export default function AdminApproveCompaniesPage() {
           approvalStatus: 'approved',
           updatedAt: new Date().toISOString(),
         });
+
+        createNotification({
+          recipientUserId: hrId,
+          recipientRole: 'hr',
+          title: 'Company Approved',
+          message: `Your company "${company.name}" has been approved by the platform administrator.`,
+          type: 'success',
+          category: 'company',
+          link: '/hr/dashboard',
+          relatedId: company.id,
+          relatedType: 'company',
+        }).catch((notifyErr) => console.error('Failed to notify HR:', notifyErr));
       }
     } catch (error) {
       console.error('Error approving company:', error);
@@ -78,6 +91,18 @@ export default function AdminApproveCompaniesPage() {
           rejectionReason: reason || 'Company information could not be verified.',
           updatedAt: new Date().toISOString(),
         });
+
+        createNotification({
+          recipientUserId: hrId,
+          recipientRole: 'hr',
+          title: 'Company Registration Update',
+          message: `Your company registration for "${company.name}" was not approved: ${reason || 'Company information could not be verified.'}`,
+          type: 'error',
+          category: 'company',
+          link: '/hr/settings',
+          relatedId: company.id,
+          relatedType: 'company',
+        }).catch((notifyErr) => console.error('Failed to notify HR:', notifyErr));
       }
     } catch (error) {
       console.error('Error rejecting company:', error);

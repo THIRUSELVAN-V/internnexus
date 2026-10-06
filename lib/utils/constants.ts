@@ -94,7 +94,6 @@ export const STUDENT_NAV_ITEMS = [
   { label: 'My Mentor', href: '/student/mentor', icon: 'GraduationCap' },
   { label: 'Tasks', href: '/student/tasks', icon: 'CheckSquare' },
   { label: 'Submissions', href: '/student/submissions', icon: 'Upload' },
-  { label: 'Progress', href: '/student/progress', icon: 'TrendingUp' },
   { label: 'Certificate', href: '/student/certificate', icon: 'Award' },
   { label: 'Settings', href: '/student/settings', icon: 'Settings' },
 ];

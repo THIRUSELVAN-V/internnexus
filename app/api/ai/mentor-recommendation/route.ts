@@ -6,7 +6,7 @@ import { adminAuth, adminDb } from "@/lib/firebase/admin";
 export const runtime = "nodejs";
 export const maxDuration = 130;
 
-const GEMINI_MODEL = "gemini-3.6-flash";
+const GEMINI_MODEL = "gemini-1.5-flash";
 
 const mentorRecommendationSchema = z.object({
   recommendations: z.array(
@@ -298,7 +298,7 @@ export async function POST(request: Request) {
         .where("mentorId", "==", mentorDoc.id)
         .get();
 
-      const currentWorkload = workloadSnapshot.docs.filter((doc) => {
+      const currentWorkload = workloadSnapshot.docs.filter((doc: any) => {
         const data = doc.data() ?? {};
 
         const status =

@@ -36,6 +36,7 @@ import {
 } from "firebase/firestore";
 
 import type { Internship } from "@/lib/types";
+import { notifyAllStudents } from "@/lib/firebase/notifications";
 
 import { INTERNSHIP_DOMAINS } from "@/lib/utils/constants";
 
@@ -489,6 +490,16 @@ export default function HRInternshipsPage() {
       );
 
       console.log("Internship published successfully:", internshipRef.id);
+
+      notifyAllStudents({
+        title: "New Internship Available",
+        message: `A new internship "${internshipData.title}" has been posted by ${internshipData.companyName || "a company"}.`,
+        type: "info",
+        category: "internship",
+        link: "/student/internships",
+        relatedId: internshipRef.id,
+        relatedType: "internship",
+      }).catch((notifyErr) => console.error("Failed to notify students:", notifyErr));
 
       // -----------------------------------------------------
       // Update UI immediately

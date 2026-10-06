@@ -1,26 +1,30 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Clock, CheckSquare, Upload, ArrowRight, BookOpen, Loader2, CheckCircle2 } from 'lucide-react';
+import { Briefcase, Clock, CheckSquare, Upload, ArrowRight, BookOpen, Loader2, CheckCircle2 } from 'lucide-react';
 import FileUpload from '@/components/shared/FileUpload';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments, createDocument, updateDocument } from '@/lib/firebase/firestore';
-import { Task, Submission } from '@/lib/types';
+import { Task, Submission, Application } from '@/lib/types';
+import { createNotification } from '@/lib/firebase/notifications';
 
 export default function StudentTasksPage() {
   const { profile } = useAuthContext();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [hasInternship, setHasInternship] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Submit Modal state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [submissionNotes, setSubmissionNotes] = useState('');
+  const [submissionLink, setSubmissionLink] = useState('');
   const [uploadedFileName, setUploadedFileName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -28,7 +32,12 @@ export default function StudentTasksPage() {
   const fetchTasks = async () => {
     setLoading(true);
     try {
-      const taskDocs = await getDocuments<Task>('tasks');
+      const [taskDocs, appDocs] = await Promise.all([
+        getDocuments<Task>('tasks'),
+        getDocuments<Application>('applications'),
+      ]);
+      const myApps = profile?.uid ? appDocs.filter((a) => a.studentId === profile.uid && a.status !== 'withdrawn') : [];
+      setHasInternship(Boolean(myApps.length > 0 || (profile as Record<string, any>)?.currentInternshipId));
       const myTasks = profile?.uid ? taskDocs.filter((t) => t.studentId === profile.uid) : [];
       setTasks(myTasks);
     } catch (err) {
@@ -55,9 +64,10 @@ export default function StudentTasksPage() {
         studentId: profile.uid,
         studentName: profile.displayName || 'Student',
         mentorId: selectedTask.mentorId,
-        fileURLs: [uploadedFileName || 'https://storage.googleapis.com/demo/deliverable.zip'],
-        fileTypes: ['zip'],
-        description: submissionNotes || 'Completed task deliverables according to weekly instructions.',
+        fileURLs: uploadedFileName ? [uploadedFileName] : [],
+        fileTypes: uploadedFileName?.endsWith('.pdf') ? ['pdf'] : ['zip'],
+        description: submissionNotes.trim() || 'Task report submitted.',
+        submissionLink: submissionLink.trim() || undefined,
         status: 'submitted',
         submittedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -69,10 +79,27 @@ export default function StudentTasksPage() {
         updatedAt: new Date().toISOString(),
       });
 
+      if (selectedTask.mentorId) {
+        createNotification({
+          recipientUserId: selectedTask.mentorId,
+          recipientRole: 'mentor',
+          title: 'Task Submitted',
+          message: `${profile.displayName || 'A student'} submitted the task "${selectedTask.title}".`,
+          type: 'info',
+          category: 'task',
+          link: '/mentor/submissions',
+          relatedId: selectedTask.id,
+          relatedType: 'task',
+        }).catch((notifyErr) => console.error('Failed to notify mentor of submission:', notifyErr));
+      }
+
       setSubmitSuccess(true);
       setTimeout(() => {
         setSubmitSuccess(false);
         setSelectedTask(null);
+        setSubmissionNotes('');
+        setSubmissionLink('');
+        setUploadedFileName('');
         fetchTasks();
       }, 1500);
     } catch (err) {
@@ -94,15 +121,34 @@ export default function StudentTasksPage() {
           <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
           <span className="ml-3 text-sm text-slate-500 font-medium">Loading assigned tasks...</span>
         </div>
-      ) : tasks.length === 0 ? (
-        <Card>
+      ) : !hasInternship ? (
+        <Card className="border-slate-200">
           <CardContent className="py-16 text-center space-y-3">
-            <div className="h-12 w-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+            <div className="h-12 w-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+              <Briefcase className="h-6 w-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">No Internship Selected</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Select an internship to view your assigned tasks and submit reports.
+            </p>
+            <div className="pt-2">
+              <Button asChild className="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs">
+                <Link href="/student/internships">
+                  Browse Internships <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : tasks.length === 0 ? (
+        <Card className="border-slate-200">
+          <CardContent className="py-16 text-center space-y-3">
+            <div className="h-12 w-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
               <CheckSquare className="h-6 w-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">No Tasks Assigned Yet</h3>
+            <h3 className="text-base font-bold text-slate-900">No Tasks Assigned</h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              Once your industrial mentor is assigned to your selected internship, weekly assignments, deadlines, and technical deliverables will appear here.
+              Your mentor has not assigned any tasks yet.
             </p>
           </CardContent>
         </Card>
@@ -198,9 +244,18 @@ export default function StudentTasksPage() {
                   </div>
 
                   <div>
-                    <label className="font-bold text-slate-700 block mb-1">Submission Notes & Demo Links</label>
+                    <label className="font-bold text-slate-700 block mb-1">Report / Submission Link</label>
+                    <Input
+                      placeholder="e.g. https://github.com/org/repo or https://drive.google.com/..."
+                      value={submissionLink}
+                      onChange={(e) => setSubmissionLink(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Submission Notes & Report Text</label>
                     <Textarea
-                      placeholder="Add brief notes or GitHub/PR links for your mentor..."
+                      placeholder="Enter submission report details, findings, or notes for your mentor..."
                       value={submissionNotes}
                       onChange={(e) => setSubmissionNotes(e.target.value)}
                       className="min-h-[80px]"

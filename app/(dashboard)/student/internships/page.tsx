@@ -40,12 +40,14 @@ import {
   increment,
   updateDoc,
 } from "firebase/firestore";
+import { createNotification } from "@/lib/firebase/notifications";
 
 interface Internship {
   id: string;
   title: string;
   company: string;
   companyId?: string;
+  hrId?: string;
   location: string;
   mode: string;
   duration: number;
@@ -190,6 +192,8 @@ export default function BrowseInternshipsPage() {
               data.companyName || companyCache.get(companyId) || "Company",
 
             companyId,
+
+            hrId: data.hrId || data.createdBy || "",
 
             location: data.location || "Not specified",
 
@@ -353,9 +357,18 @@ export default function BrowseInternshipsPage() {
         return;
       }
 
-      // -----------------------------------------------------
-      // Create application
-      // -----------------------------------------------------
+      let targetHrId = internship.hrId || "";
+      if (!targetHrId && internship.companyId) {
+        try {
+          const compDoc = await getDoc(doc(db, "companies", internship.companyId));
+          if (compDoc.exists()) {
+            const compData = compDoc.data();
+            targetHrId = compData.hrId || (compData.hrIds && compData.hrIds[0]) || "";
+          }
+        } catch (compErr) {
+          console.error("Failed to load company HR info:", compErr);
+        }
+      }
 
       const applicationData = {
         studentId: user.uid,
@@ -375,6 +388,8 @@ export default function BrowseInternshipsPage() {
         companyId: internship.companyId ?? "",
 
         companyName: internship.company,
+
+        hrId: targetHrId,
 
         resumeURL: student?.resumeURL ?? "",
 
@@ -408,6 +423,20 @@ export default function BrowseInternshipsPage() {
       );
 
       console.log("Application created successfully:", applicationRef.id);
+
+      if (targetHrId) {
+        createNotification({
+          recipientUserId: targetHrId,
+          recipientRole: "hr",
+          title: "New Application Received",
+          message: `${applicationData.studentName} has applied for your ${internship.title} internship.`,
+          type: "info",
+          category: "application",
+          link: "/hr/applicants",
+          relatedId: applicationRef.id,
+          relatedType: "application",
+        }).catch((notifyErr) => console.error("Failed to notify HR:", notifyErr));
+      }
 
       // -----------------------------------------------------
       // Increase applicant count
@@ -672,7 +701,7 @@ export default function BrowseInternshipsPage() {
           open={!!selectedInternship}
           onOpenChange={() => setSelectedInternship(null)}
         >
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="text-xs capitalize">

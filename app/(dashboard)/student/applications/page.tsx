@@ -9,26 +9,83 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments, updateDocument } from '@/lib/firebase/firestore';
-import { Application } from '@/lib/types';
+import { Application, Company, UserProfile, Internship } from '@/lib/types';
+import { formatTimestamp } from '@/lib/utils/formatters';
+import { createNotification } from '@/lib/firebase/notifications';
 
 export default function StudentApplicationsPage() {
   const { profile } = useAuthContext();
   const [applications, setApplications] = useState<Application[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [hrUsers, setHrUsers] = useState<UserProfile[]>([]);
+  const [internships, setInternships] = useState<Internship[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchStudentApplications = async () => {
     setLoading(true);
     try {
-      const allApps = await getDocuments<Application>('applications');
+      const [allApps, allCompanies, allUsers, allInternships] = await Promise.all([
+        getDocuments<Application>('applications'),
+        getDocuments<Company>('companies'),
+        getDocuments<UserProfile>('users'),
+        getDocuments<Internship>('internships'),
+      ]);
+
       const studentApps = profile?.uid
         ? allApps.filter((a) => a.studentId === profile.uid)
         : [];
       setApplications(studentApps);
+      setCompanies(allCompanies);
+      setHrUsers(allUsers);
+      setInternships(allInternships);
     } catch (err) {
       console.error('Error fetching applications:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const getHRContact = (app: Application) => {
+    const appAny = app as Record<string, any>;
+    let name = (appAny.hrName as string) || '';
+    let email = (appAny.hrEmail as string) || '';
+    let phone = (appAny.hrPhone as string) || '';
+
+    // Match company by companyId or companyName
+    const matchedCompany = companies.find(
+      (c) =>
+        (app.companyId && c.id === app.companyId) ||
+        (c.name && app.companyName && c.name.toLowerCase() === app.companyName.toLowerCase())
+    );
+
+    if (matchedCompany) {
+      if (!name && matchedCompany.hrName) name = matchedCompany.hrName;
+      if (!email && (matchedCompany.hrEmail || matchedCompany.officialEmail)) {
+        email = matchedCompany.hrEmail || matchedCompany.officialEmail || '';
+      }
+      if (!phone && (matchedCompany.hrPhone || matchedCompany.contactNumber)) {
+        phone = matchedCompany.hrPhone || matchedCompany.contactNumber || '';
+      }
+    }
+
+    // Match internship
+    const matchedInternship = internships.find((i) => i.id === app.internshipId);
+    const hrUserId = matchedCompany?.hrId || matchedInternship?.hrId;
+
+    if (hrUserId) {
+      const matchedUser = hrUsers.find((u) => u.uid === hrUserId);
+      if (matchedUser) {
+        if (!name && matchedUser.displayName) name = matchedUser.displayName;
+        if (!email && matchedUser.email) email = matchedUser.email;
+        if (!phone && matchedUser.phone) phone = matchedUser.phone;
+      }
+    }
+
+    return {
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+    };
   };
 
   useEffect(() => {
@@ -37,10 +94,31 @@ export default function StudentApplicationsPage() {
 
   const handleWithdraw = async (appId: string) => {
     try {
+      const app = applications.find((a) => a.id === appId);
       await updateDocument('applications', appId, {
         status: 'withdrawn',
         updatedAt: new Date().toISOString(),
       });
+
+      if (app) {
+        const matchedInternship = internships.find((i) => i.id === app.internshipId);
+        const matchedCompany = companies.find((c) => c.id === app.companyId);
+        const targetHrId = (app as Record<string, any>).hrId || matchedInternship?.hrId || matchedCompany?.hrId;
+        if (targetHrId) {
+          createNotification({
+            recipientUserId: targetHrId,
+            recipientRole: 'hr',
+            title: 'Application Withdrawn',
+            message: `${app.studentName || 'A student'} has withdrawn their application for ${app.internshipTitle || 'Internship'}.`,
+            type: 'warning',
+            category: 'application',
+            link: '/hr/applicants',
+            relatedId: appId,
+            relatedType: 'application',
+          }).catch((notifyErr) => console.error('Failed to notify HR of withdrawal:', notifyErr));
+        }
+      }
+
       fetchStudentApplications();
     } catch (err) {
       console.error('Error withdrawing application:', err);
@@ -70,11 +148,14 @@ export default function StudentApplicationsPage() {
     {
       key: 'appliedAt',
       header: 'Applied Date',
-      render: (item) => (
-        <span className="text-xs text-slate-600 font-mono">
-          {item.appliedAt ? item.appliedAt.slice(0, 10) : 'Recently'}
-        </span>
-      ),
+      render: (item) => {
+        const dateStr = formatTimestamp(item.appliedAt);
+        return (
+          <span className="text-xs text-slate-600 font-mono">
+            {dateStr ? dateStr.slice(0, 10) : 'Recently'}
+          </span>
+        );
+      },
     },
     {
       key: 'status',
@@ -105,13 +186,40 @@ export default function StudentApplicationsPage() {
           item.status === 'accepted' ||
           item.status === 'mentor_assigned';
 
-        return isAccessible ? (
-          <div className="text-xs">
-            <span className="font-semibold text-slate-900 block">{item.companyName} Talent Acquisition</span>
-            <span className="text-[11px] text-blue-600 font-mono">Verified HR Contact</span>
+        if (!isAccessible) {
+          return (
+            <span className="text-xs text-slate-400 italic">Visible once shortlisted</span>
+          );
+        }
+
+        const hr = getHRContact(item);
+        const contactName = hr.name || `${item.companyName} HR`;
+
+        return (
+          <div className="text-xs space-y-0.5">
+            <span className="font-semibold text-slate-900 block">{contactName}</span>
+            {hr.email && (
+              <a
+                href={`mailto:${hr.email}`}
+                className="text-[11px] text-blue-600 hover:underline block truncate max-w-[200px]"
+                title={hr.email}
+              >
+                {hr.email}
+              </a>
+            )}
+            {hr.phone && (
+              <a
+                href={`tel:${hr.phone}`}
+                className="text-[11px] text-slate-500 hover:text-slate-700 block"
+                title={hr.phone}
+              >
+                {hr.phone}
+              </a>
+            )}
+            {!hr.email && !hr.phone && (
+              <span className="text-[11px] text-blue-600 font-mono">Verified HR Contact</span>
+            )}
           </div>
-        ) : (
-          <span className="text-xs text-slate-400 italic">Visible once shortlisted</span>
         );
       },
     },

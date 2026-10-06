@@ -22,6 +22,7 @@ import { analyzeResume } from '@/lib/ai/resumeAnalysis';
 import { cn } from '@/lib/utils/formatters';
 import type { UserRole, StudentProfile, HRProfile, MentorProfile, Company } from '@/lib/types';
 import { COMPANY_SIZES } from '@/lib/utils/constants';
+import { notifyAllAdmins } from '@/lib/firebase/notifications';
 
 const schema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -337,6 +338,16 @@ export default function RegisterPage() {
           };
 
           await setDocument('companies', targetCompId, newCompany);
+
+          notifyAllAdmins({
+            title: 'Company Approval Required',
+            message: `${companyName.trim()} has registered and is pending approval.`,
+            type: 'warning',
+            category: 'company',
+            link: '/admin/approve-companies',
+            relatedId: targetCompId,
+            relatedType: 'company',
+          }).catch((notifyErr) => console.error('Failed to notify admins:', notifyErr));
         }
 
         // Update HR user profile
@@ -878,13 +889,6 @@ export default function RegisterPage() {
               )}
             </AnimatePresence>
           </div>
-        )}
-
-        {!hrSuccessSubmitted && (
-          <p className="mt-4 text-center text-xs text-slate-400">
-            Already have an account?{' '}
-            <Link href="/login" className="text-blue-600 hover:underline font-medium">Sign in</Link>
-          </p>
         )}
       </motion.div>
     </div>

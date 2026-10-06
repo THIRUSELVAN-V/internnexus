@@ -89,6 +89,7 @@ ${text.slice(0, 4000)}
 
   const parsed = JSON.parse(rawResponse);
   return {
+    status: 'completed',
     skills: parsed.skills || [],
     technicalSkills: parsed.skills || [],
     softSkills: ['Problem Solving', 'Teamwork', 'Communication'],
@@ -217,6 +218,7 @@ function parseResumeTextIntelligently(text: string): ResumeAnalysis {
   }
 
   return {
+    status: 'completed',
     skills: allSkills,
     technicalSkills: allSkills,
     softSkills: ['Problem Solving', 'Teamwork', 'Communication', 'Adaptability'],
