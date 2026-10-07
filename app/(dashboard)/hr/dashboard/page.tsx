@@ -111,11 +111,18 @@ export default function HRDashboardPage() {
             Review AI candidate rankings, assign mentors, monitor active interns, and issue completion certificates.
           </p>
         </div>
-        <Button asChild variant="secondary" className="bg-white text-purple-700 hover:bg-purple-50 border-none shrink-0 font-semibold text-xs sm:text-sm">
-          <Link href="/hr/internships">
-            <Plus className="h-4 w-4 mr-1" /> Post New Internship
-          </Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <Button asChild variant="secondary" className="bg-white/20 text-white hover:bg-white/30 border-none font-semibold text-xs sm:text-sm">
+            <Link href="/hr/mentors">
+              <UserCheck className="h-4 w-4 mr-1" /> Company Mentors
+            </Link>
+          </Button>
+          <Button asChild variant="secondary" className="bg-white text-purple-700 hover:bg-purple-50 border-none font-semibold text-xs sm:text-sm">
+            <Link href="/hr/internships">
+              <Plus className="h-4 w-4 mr-1" /> Post New Internship
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {loading ? (

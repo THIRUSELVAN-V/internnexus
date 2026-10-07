@@ -31,6 +31,7 @@ import {
   getDocs,
   doc,
   getDoc,
+  updateDoc,
   deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
@@ -81,6 +82,7 @@ export default function HRInternshipsPage() {
   // Form state
   // ---------------------------------------------------------
 
+  const [editId, setEditId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
 
   const [domain, setDomain] = useState(INTERNSHIP_DOMAINS[0] || "");
@@ -262,6 +264,7 @@ export default function HRInternshipsPage() {
   // ---------------------------------------------------------
 
   const resetForm = () => {
+    setEditId(null);
     setTitle("");
     setDomain(INTERNSHIP_DOMAINS[0] || "");
     setStipend("");
@@ -272,6 +275,22 @@ export default function HRInternshipsPage() {
     setDeadline("");
     setDescription("");
     setSkills("");
+  };
+
+  const handleEditClick = (item: InternshipPosting) => {
+    setEditId(item.id);
+    setTitle(item.title || "");
+    setDomain(item.domain || INTERNSHIP_DOMAINS[0] || "");
+    setStipend(item.stipend ? item.stipend.toString() : "");
+    setOpenings(item.openings ? item.openings.toString() : "1");
+    setDuration(item.duration ? item.duration.toString() : "8");
+    setMode(item.mode || "remote");
+    setLocation(item.location || "");
+    setDeadline(item.deadline || "");
+    setDescription(item.description || item.requirements?.join("\n") || "");
+    setSkills(item.skills?.join(", ") || "");
+    setError("");
+    setOpenModal(true);
   };
 
   // ---------------------------------------------------------
@@ -430,122 +449,117 @@ export default function HRInternshipsPage() {
       }
 
       // -----------------------------------------------------
-      // Internship document
+      // Save or Update Internship
       // -----------------------------------------------------
 
-      const internshipData = {
-        companyId: userData.companyId || "",
+      if (editId) {
+        const updateData = {
+          title: title.trim(),
+          domain: domain.trim(),
+          description: description.trim(),
+          requirements:
+            requirementList.length > 0 ? requirementList : [description.trim()],
+          skills: skillList,
+          duration: Number(duration),
+          stipend: Number(stipend),
+          location: location.trim() || (mode === "remote" ? "Remote" : "On-site"),
+          mode,
+          openings: Number(openings),
+          applicationDeadline,
+          deadline: applicationDeadline,
+          updatedAt: serverTimestamp(),
+        };
 
-        companyName,
+        await updateDoc(doc(db, "internships", editId), updateData);
 
-        title: title.trim(),
+        setListings((current) =>
+          current.map((item) =>
+            item.id === editId
+              ? {
+                  ...item,
+                  title: updateData.title,
+                  domain: updateData.domain,
+                  stipend: updateData.stipend,
+                  openings: updateData.openings,
+                  deadline: updateData.deadline,
+                  applicationDeadline: updateData.applicationDeadline,
+                  duration: updateData.duration,
+                  mode: updateData.mode as "remote" | "onsite" | "hybrid",
+                  location: updateData.location,
+                  description: updateData.description,
+                  requirements: updateData.requirements,
+                  skills: updateData.skills,
+                }
+              : item
+          )
+        );
+      } else {
+        const internshipData = {
+          companyId: userData.companyId || "",
+          companyName,
+          title: title.trim(),
+          domain: domain.trim(),
+          description: description.trim(),
+          requirements:
+            requirementList.length > 0 ? requirementList : [description.trim()],
+          skills: skillList,
+          duration: Number(duration),
+          stipend: Number(stipend),
+          location: location.trim() || (mode === "remote" ? "Remote" : "On-site"),
+          mode,
+          openings: Number(openings),
+          applicationDeadline,
+          deadline: applicationDeadline,
+          startDate,
+          applicantsCount: 0,
+          status: "active",
+          hrId: user.uid,
+          createdBy: user.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
 
-        domain: domain.trim(),
+        const internshipRef = await addDoc(
+          collection(db, "internships"),
+          internshipData,
+        );
 
-        description: description.trim(),
+        console.log("Internship published successfully:", internshipRef.id);
 
-        requirements:
-          requirementList.length > 0 ? requirementList : [description.trim()],
+        notifyAllStudents({
+          title: "New Internship Available",
+          message: `A new internship "${internshipData.title}" has been posted by ${internshipData.companyName || "a company"}.`,
+          type: "info",
+          category: "internship",
+          link: "/student/internships",
+          relatedId: internshipRef.id,
+          relatedType: "internship",
+        }).catch((notifyErr) => console.error("Failed to notify students:", notifyErr));
 
-        skills: skillList,
+        const newInternship: InternshipPosting = {
+          id: internshipRef.id,
+          title: internshipData.title,
+          domain: internshipData.domain,
+          stipend: internshipData.stipend,
+          openings: internshipData.openings,
+          applicantsCount: 0,
+          status: "active",
+          deadline: internshipData.deadline,
+          applicationDeadline: internshipData.applicationDeadline,
+          startDate: internshipData.startDate,
+          duration: internshipData.duration,
+          mode: internshipData.mode as "remote" | "onsite" | "hybrid",
+          location: internshipData.location,
+          companyId: internshipData.companyId,
+          companyName: internshipData.companyName,
+          createdBy: internshipData.createdBy,
+          description: internshipData.description,
+          requirements: internshipData.requirements,
+          skills: internshipData.skills,
+        };
 
-        duration: Number(duration),
-
-        stipend: Number(stipend),
-
-        location: location.trim() || (mode === "remote" ? "Remote" : "On-site"),
-
-        mode,
-
-        openings: Number(openings),
-
-        applicationDeadline,
-
-        // Keep legacy deadline field
-        // for compatibility.
-        deadline: applicationDeadline,
-
-        startDate,
-
-        applicantsCount: 0,
-
-        status: "active",
-
-        hrId: user.uid,
-
-        createdBy: user.uid,
-
-        createdAt: serverTimestamp(),
-
-        updatedAt: serverTimestamp(),
-      };
-
-      // -----------------------------------------------------
-      // Save to Firestore
-      // -----------------------------------------------------
-
-      const internshipRef = await addDoc(
-        collection(db, "internships"),
-        internshipData,
-      );
-
-      console.log("Internship published successfully:", internshipRef.id);
-
-      notifyAllStudents({
-        title: "New Internship Available",
-        message: `A new internship "${internshipData.title}" has been posted by ${internshipData.companyName || "a company"}.`,
-        type: "info",
-        category: "internship",
-        link: "/student/internships",
-        relatedId: internshipRef.id,
-        relatedType: "internship",
-      }).catch((notifyErr) => console.error("Failed to notify students:", notifyErr));
-
-      // -----------------------------------------------------
-      // Update UI immediately
-      // -----------------------------------------------------
-
-      const newInternship: InternshipPosting = {
-        id: internshipRef.id,
-
-        title: internshipData.title,
-
-        domain: internshipData.domain,
-
-        stipend: internshipData.stipend,
-
-        openings: internshipData.openings,
-
-        applicantsCount: 0,
-
-        status: "active",
-
-        deadline: internshipData.deadline,
-
-        applicationDeadline: internshipData.applicationDeadline,
-
-        startDate: internshipData.startDate,
-
-        duration: internshipData.duration,
-
-        mode: internshipData.mode,
-
-        location: internshipData.location,
-
-        companyId: internshipData.companyId,
-
-        companyName: internshipData.companyName,
-
-        createdBy: internshipData.createdBy,
-
-        description: internshipData.description,
-
-        requirements: internshipData.requirements,
-
-        skills: internshipData.skills,
-      };
-
-      setListings((current) => [newInternship, ...current]);
+        setListings((current) => [newInternship, ...current]);
+      }
 
       resetForm();
       setOpenModal(false);
@@ -711,8 +725,9 @@ export default function HRInternshipsPage() {
           <Button
             variant="ghost"
             size="icon-sm"
-            disabled
-            title="Edit will be added later"
+            onClick={() => handleEditClick(item)}
+            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            title="Edit internship"
           >
             <Edit className="h-3.5 w-3.5" />
           </Button>
@@ -804,7 +819,7 @@ export default function HRInternshipsPage() {
           <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-base font-bold text-slate-900">
-                Publish New Internship Listing
+                {editId ? "Edit Internship Listing" : "Publish New Internship Listing"}
               </DialogTitle>
             </DialogHeader>
 
@@ -1006,10 +1021,10 @@ export default function HRInternshipsPage() {
                 {publishing ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                    Publishing...
+                    {editId ? "Updating..." : "Publishing..."}
                   </>
                 ) : (
-                  "Publish Posting"
+                  editId ? "Update Posting" : "Publish Posting"
                 )}
               </Button>
             </DialogFooter>

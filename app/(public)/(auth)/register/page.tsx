@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,8 +9,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
   Eye, EyeOff, Zap, Mail, Lock, User as UserIcon, ChevronRight,
-  GraduationCap, Building2, UserCheck, Shield, FileText, Upload, Sparkles, AlertCircle, Loader2, CheckCircle2,
-  Phone, MapPin, Globe, Hash, Clock, ArrowRight, ShieldCheck
+  GraduationCap, Building2, UserCheck, FileText, Upload, Sparkles, AlertCircle, Loader2,
+  Phone, MapPin, Globe, Hash, Clock, ArrowRight, ShieldCheck, Search, Check, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,9 +20,9 @@ import { signUp, updateUserProfile } from '@/lib/firebase/auth';
 import { setDocument, getDocuments, updateDocument } from '@/lib/firebase/firestore';
 import { analyzeResume } from '@/lib/ai/resumeAnalysis';
 import { cn } from '@/lib/utils/formatters';
-import type { UserRole, StudentProfile, HRProfile, MentorProfile, Company } from '@/lib/types';
+import type { StudentProfile, HRProfile, MentorProfile, Company } from '@/lib/types';
 import { COMPANY_SIZES } from '@/lib/utils/constants';
-import { notifyAllAdmins } from '@/lib/firebase/notifications';
+import { notifyAllAdmins, createNotification } from '@/lib/firebase/notifications';
 
 const schema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -35,20 +35,29 @@ const schema = z.object({
 });
 type RegisterForm = z.infer<typeof schema>;
 
-const ROLES: { value: UserRole; label: string; description: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
+type RegisterRole = 'student' | 'hr' | 'mentor';
+
+const ROLES: { value: RegisterRole; label: string; description: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
   { value: 'student', label: 'Student', description: 'Apply to internships and track your progress', icon: GraduationCap, color: 'border-blue-200 bg-blue-50 text-blue-700' },
   { value: 'hr', label: 'HR / Employer', description: 'Register company, post internships and manage candidates', icon: Building2, color: 'border-purple-200 bg-purple-50 text-purple-700' },
   { value: 'mentor', label: 'Industrial Mentor', description: 'Guide interns and assign tasks', icon: UserCheck, color: 'border-green-200 bg-green-50 text-green-700' },
-  { value: 'admin', label: 'Admin', description: 'Manage the platform and approve companies', icon: Shield, color: 'border-rose-200 bg-rose-50 text-rose-700' },
 ];
 
 export default function RegisterPage() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [role, setRole] = useState<RegisterRole | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [warningMessage, setWarningMessage] = useState('');
+
+  // Mentor Company Search & Selection (Mentors only)
+  const [approvedCompanies, setApprovedCompanies] = useState<Company[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [companySearchQuery, setCompanySearchQuery] = useState('');
+  const [isCompanyDropdownOpen, setIsCompanyDropdownOpen] = useState(false);
+  const companyDropdownRef = useRef<HTMLDivElement>(null);
 
   // Resume upload state (students only)
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -78,33 +87,59 @@ export default function RegisterPage() {
   const [submittedCompanyName, setSubmittedCompanyName] = useState('');
   const [isLinkedToExisting, setIsLinkedToExisting] = useState(false);
 
-  // Mentor Affiliation (Mentor only)
-  const [approvedCompanies, setApprovedCompanies] = useState<Company[]>([]);
-  const [selectedMentorCompanyId, setSelectedMentorCompanyId] = useState('');
-  const [mentorDesignation, setMentorDesignation] = useState('');
-
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<RegisterForm>({
     resolver: zodResolver(schema),
   });
 
-  // Load approved companies for mentor affiliation
-  useEffect(() => {
-    async function loadCompanies() {
-      try {
-        const comps = await getDocuments<Company>('companies');
-        const approved = comps.filter((c) => c.status === 'approved');
-        setApprovedCompanies(approved);
-      } catch (e) {
-        console.error('Error loading companies:', e);
-      }
+  // Load approved companies for mentor company selection.
+  // Uses a server-side API route that authenticates with the system service
+  // account — unauthenticated Firestore reads are blocked by security rules
+  // even though the rule says `allow read: if true`, so client-side queries
+  // silently fail on the public register page.
+  const loadApprovedCompanies = async () => {
+    try {
+      setLoadingCompanies(true);
+      const res = await fetch('/api/companies/approved');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setApprovedCompanies((data.companies as Company[]) ?? []);
+    } catch (err) {
+      console.error('Failed to load approved companies:', err);
+    } finally {
+      setLoadingCompanies(false);
     }
-    loadCompanies();
+  };
+
+  useEffect(() => {
+    loadApprovedCompanies();
   }, []);
 
-  const handleRoleSelect = (r: UserRole) => {
+  // Close company dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        companyDropdownRef.current &&
+        !companyDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsCompanyDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleRoleSelect = (r: RegisterRole) => {
     setRole(r);
     setStep(2);
     setError('');
+    setSelectedCompany(null);
+    setCompanySearchQuery('');
+    setIsCompanyDropdownOpen(false);
+    if (r === 'mentor' && approvedCompanies.length === 0) {
+      loadApprovedCompanies();
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -211,9 +246,49 @@ export default function RegisterPage() {
       }
     }
 
+    let verifiedCompanyName = selectedCompany?.name || '';
+    let authorizedMentorDocId: string | null = null;
+    let authorizedAddedByHR: string | null = null;
+
     try {
+      // ─────────────────────────────────────────────────────────────
+      // Mentor Authorization Verification (BEFORE Creating Account)
+      // Uses secure server-side API to verify authorization in Firestore
+      // without encountering client-side unauthenticated permission limits.
+      // ─────────────────────────────────────────────────────────────
+      if (role === 'mentor') {
+        if (!selectedCompany) {
+          setError('Please search and select your company from the dropdown.');
+          return;
+        }
+
+        setProcessingStage('Verifying mentor authorization with company HR records...');
+        const verifyRes = await fetch('/api/mentor/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            companyId: selectedCompany.id,
+            name: data.displayName,
+            email: data.email,
+          }),
+        });
+
+        const verifyData = await verifyRes.json();
+        if (!verifyRes.ok || !verifyData.success) {
+          setError(verifyData.error || 'Mentor authorization verification failed.');
+          setProcessingStage(null);
+          return;
+        }
+
+        authorizedMentorDocId = verifyData.authorizedMentorDocId;
+        authorizedAddedByHR = verifyData.addedByHR || null;
+        if (verifyData.companyName) {
+          verifiedCompanyName = verifyData.companyName;
+        }
+      }
+
       // 1. Create Firebase Auth user & basic profile
-      setProcessingStage('Creating secure user account...');
+      setProcessingStage(role === 'mentor' ? 'Authorization verified! Creating secure user account...' : 'Creating secure user account...');
       const userProfile = await signUp(data.email, data.password, data.displayName, role);
 
       // 2. If Student with uploaded resume: AI analysis in memory without file storage
@@ -239,14 +314,61 @@ export default function RegisterPage() {
         }
       }
 
-      // 3. If Mentor: Associate with selected approved company
+      // 3. If Mentor: Associate with authorized company & update authorization record
       if (role === 'mentor' && userProfile?.uid) {
-        const matchedComp = approvedCompanies.find((c) => c.id === selectedMentorCompanyId);
+        const compName = verifiedCompanyName || selectedCompany!.name;
+
         await updateUserProfile(userProfile.uid, {
-          companyId: matchedComp ? matchedComp.id : undefined,
-          companyName: matchedComp ? matchedComp.name : undefined,
-          designation: mentorDesignation.trim() || 'Industrial Mentor',
+          companyId: selectedCompany!.id,
+          companyName: compName,
+          designation: 'Industrial Mentor',
+          currentWorkload: 0,
+          maxMentees: 5,
         } as Partial<MentorProfile>);
+
+        if (authorizedMentorDocId) {
+          await fetch('/api/mentor/complete-registration', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              companyId: selectedCompany!.id,
+              authorizedMentorDocId,
+              mentorUserId: userProfile.uid,
+            }),
+          }).catch((err) => console.error('Failed to update authorized mentor record:', err));
+        }
+
+        // Notify HR
+        if (authorizedAddedByHR) {
+          createNotification({
+            recipientUserId: authorizedAddedByHR,
+            recipientRole: 'hr',
+            title: 'Mentor Registered',
+            message: `${data.displayName} has successfully registered as a mentor for ${compName}.`,
+            type: 'success',
+            category: 'system',
+            link: '/hr/mentors',
+            relatedId: userProfile.uid,
+            relatedType: 'user',
+          }).catch(console.error);
+        }
+
+        // Welcome notification for Mentor
+        createNotification({
+          recipientUserId: userProfile.uid,
+          recipientRole: 'mentor',
+          title: 'Welcome to InternNexus',
+          message: `Welcome, ${data.displayName}! Your mentor account with ${compName} has been authorized and activated.`,
+          type: 'success',
+          category: 'system',
+          link: '/mentor/dashboard',
+        }).catch(console.error);
+
+        setProcessingStage('Registration completed! Redirecting to Mentor Portal...');
+        setTimeout(() => {
+          router.push('/mentor/dashboard');
+        }, 800);
+        return;
       }
 
       // 4. If HR: Deduplicate company & set status strictly to 'pending'
@@ -371,8 +493,11 @@ export default function RegisterPage() {
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Registration failed';
-      if (msg.includes('email-already-in-use')) setError('An account with this email already exists.');
-      else setError(msg);
+      if (msg.includes('email-already-in-use')) {
+        setError('An account with this email already exists. Please sign in to your account.');
+      } else {
+        setError(msg);
+      }
       setProcessingStage(null);
     }
   };
@@ -492,7 +617,7 @@ export default function RegisterPage() {
                     </button>
                     <span className="text-xs text-slate-300">·</span>
                     <span className="text-xs text-slate-500">
-                      Registering as <strong className="text-slate-900 capitalize">{role === 'hr' ? 'HR / Employer' : role}</strong>
+                      Registering as <strong className="text-slate-900 capitalize">{role === 'hr' ? 'HR / Employer' : role === 'mentor' ? 'Industrial Mentor' : role}</strong>
                     </span>
                   </div>
 
@@ -500,6 +625,8 @@ export default function RegisterPage() {
                   <p className="text-xs text-slate-500 mb-5">
                     {role === 'hr'
                       ? 'Provide your professional contact details and enterprise information for Admin verification.'
+                      : role === 'mentor'
+                      ? 'Select your company and enter your authorized credentials to activate your mentor account.'
                       : 'Fill in your credentials to complete account setup.'}
                   </p>
 
@@ -520,13 +647,27 @@ export default function RegisterPage() {
                         </div>
                       )}
 
+                      {role === 'mentor' && (
+                        <div className="pb-1">
+                          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5 uppercase tracking-wider text-green-700">
+                            <UserCheck className="h-3.5 w-3.5 text-green-600" />
+                            Mentor Authorization Details
+                          </span>
+                          <p className="text-[11px] text-slate-500">
+                            Your full name and email must match the authorization record created by your company&apos;s HR.
+                          </p>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <Label htmlFor="displayName" required>Full Name</Label>
+                          <Label htmlFor="displayName" required>
+                            {role === 'mentor' ? 'Mentor Full Name (Authorized)' : 'Full Name'}
+                          </Label>
                           <div className="mt-1">
                             <Input
                               id="displayName"
-                              placeholder="e.g. Sarah Jenkins"
+                              placeholder={role === 'mentor' ? 'e.g. John Doe' : 'e.g. Sarah Jenkins'}
                               leftIcon={<UserIcon className="h-3.5 w-3.5 text-slate-400" />}
                               error={errors.displayName?.message}
                               {...register('displayName')}
@@ -535,12 +676,14 @@ export default function RegisterPage() {
                         </div>
 
                         <div>
-                          <Label htmlFor="reg-email" required>{role === 'hr' ? 'Official / Work Email' : 'Email'}</Label>
+                          <Label htmlFor="reg-email" required>
+                            {role === 'hr' ? 'Official / Work Email' : role === 'mentor' ? 'Authorized Email Address' : 'Email'}
+                          </Label>
                           <div className="mt-1">
                             <Input
                               id="reg-email"
                               type="email"
-                              placeholder={role === 'hr' ? 'sarah@acmecorp.com' : 'you@example.com'}
+                              placeholder={role === 'hr' ? 'sarah@acmecorp.com' : role === 'mentor' ? 'john@yourcompany.com' : 'you@example.com'}
                               leftIcon={<Mail className="h-3.5 w-3.5 text-slate-400" />}
                               error={errors.email?.message}
                               {...register('email')}
@@ -613,6 +756,152 @@ export default function RegisterPage() {
                           </div>
                         </div>
                       </div>
+
+                      {/* Searchable Company Selection for Industrial Mentor */}
+                      {role === 'mentor' && (
+                        <div className="pt-2 border-t border-slate-100 space-y-2">
+                          <Label htmlFor="company-search" required className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                            <Building2 className="h-3.5 w-3.5 text-green-600" />
+                            Company / Organization (Searchable)
+                          </Label>
+                          <p className="text-[11px] text-slate-500">
+                            Select the approved company where your HR authorized your mentor credentials.
+                          </p>
+
+                          {selectedCompany ? (
+                            <div className="flex items-center justify-between p-3 rounded-xl border border-green-200 bg-green-50/70 text-xs">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="h-8 w-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center shrink-0 font-bold text-xs">
+                                  <Building2 className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-bold text-slate-900 truncate">{selectedCompany.name}</p>
+                                  <p className="text-[11px] text-slate-500 truncate">
+                                    {selectedCompany.location || selectedCompany.city || 'Verified Company'}
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCompany(null);
+                                  setCompanySearchQuery('');
+                                  setIsCompanyDropdownOpen(true);
+                                }}
+                                className="text-xs font-semibold text-green-700 hover:text-green-800 hover:underline px-2 py-1"
+                              >
+                                Change Company
+                              </button>
+                            </div>
+                          ) : (
+                            <div ref={companyDropdownRef} className="relative">
+                              <div className="relative">
+                                <Input
+                                  id="company-search"
+                                  placeholder="Type to search approved company..."
+                                  value={companySearchQuery}
+                                  onChange={(e) => {
+                                    setCompanySearchQuery(e.target.value);
+                                    setIsCompanyDropdownOpen(true);
+                                  }}
+                                  onFocus={() => {
+                                    setIsCompanyDropdownOpen(true);
+                                    if (approvedCompanies.length === 0 && !loadingCompanies) {
+                                      loadApprovedCompanies();
+                                    }
+                                  }}
+                                  leftIcon={<Search className="h-3.5 w-3.5 text-slate-400" />}
+                                  rightIcon={
+                                    loadingCompanies ? (
+                                      <Loader2 className="h-3.5 w-3.5 text-slate-400 animate-spin" />
+                                    ) : companySearchQuery ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setCompanySearchQuery('');
+                                        }}
+                                        className="hover:text-slate-600"
+                                      >
+                                        <X className="h-3.5 w-3.5 text-slate-400" />
+                                      </button>
+                                    ) : null
+                                  }
+                                />
+                              </div>
+
+                              {isCompanyDropdownOpen && (
+                                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+                                  {loadingCompanies ? (
+                                    <div className="p-4 text-center text-xs text-slate-500">
+                                      <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1 text-slate-400" />
+                                      Loading approved companies...
+                                    </div>
+                                  ) : approvedCompanies.filter((comp) => {
+                                      const q = companySearchQuery.toLowerCase().trim();
+                                      if (!q) return true;
+                                      return (
+                                        comp.name.toLowerCase().includes(q) ||
+                                        (comp.location && comp.location.toLowerCase().includes(q)) ||
+                                        (comp.city && comp.city.toLowerCase().includes(q))
+                                      );
+                                    }).length === 0 ? (
+                                    <div className="p-4 text-center text-xs text-slate-500">
+                                      {companySearchQuery ? (
+                                        <>
+                                          No approved companies matching &quot;<strong>{companySearchQuery}</strong>&quot;.
+                                          <p className="text-[11px] text-slate-400 mt-1">
+                                            Please verify the company name or contact your company HR.
+                                          </p>
+                                        </>
+                                      ) : (
+                                        'No approved companies available in the system.'
+                                      )}
+                                    </div>
+                                  ) : (
+                                    approvedCompanies
+                                      .filter((comp) => {
+                                        const q = companySearchQuery.toLowerCase().trim();
+                                        if (!q) return true;
+                                        return (
+                                          comp.name.toLowerCase().includes(q) ||
+                                          (comp.location && comp.location.toLowerCase().includes(q)) ||
+                                          (comp.city && comp.city.toLowerCase().includes(q))
+                                        );
+                                      })
+                                      .map((comp) => (
+                                        <button
+                                          key={comp.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedCompany(comp);
+                                            setCompanySearchQuery(comp.name);
+                                            setIsCompanyDropdownOpen(false);
+                                            setError('');
+                                          }}
+                                          className="w-full flex items-center justify-between p-2.5 text-left rounded-lg hover:bg-green-50 transition-colors group"
+                                        >
+                                          <div className="min-w-0 pr-2">
+                                            <p className="text-xs font-bold text-slate-900 group-hover:text-green-800 truncate">
+                                              {comp.name}
+                                            </p>
+                                            <p className="text-[11px] text-slate-400 truncate">
+                                              {comp.location || comp.city || 'Verified Company'}
+                                            </p>
+                                          </div>
+                                          <Check className="h-3.5 w-3.5 text-slate-300 group-hover:text-green-600 shrink-0" />
+                                        </button>
+                                      ))
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-[11px] text-amber-900 leading-relaxed">
+                            <strong>HR Authorization Check:</strong> Your registration will only succeed if your company&apos;s HR has previously authorized your name and email in the system.
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* ─────────────────────────────────────────────────────────────
@@ -774,53 +1063,6 @@ export default function RegisterPage() {
                       </div>
                     )}
 
-                    {/* Mentor Organization Association Field */}
-                    {role === 'mentor' && (
-                      <div className="pt-3 border-t border-slate-100 space-y-3">
-                        <div>
-                          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                            <Building2 className="h-3.5 w-3.5 text-green-600" />
-                            Industrial Mentor Affiliation
-                          </span>
-                          <p className="text-[11px] text-slate-500">
-                            Select the verified company you are associated with.
-                          </p>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <Label htmlFor="mentorCompany">Associated Organization</Label>
-                            <div className="mt-1">
-                              <select
-                                id="mentorCompany"
-                                value={selectedMentorCompanyId}
-                                onChange={(e) => setSelectedMentorCompanyId(e.target.value)}
-                                className="w-full h-10 px-3 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-slate-700"
-                              >
-                                <option value="">Independent / Select Company</option>
-                                {approvedCompanies.map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name} ({c.location})
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-
-                          <div>
-                            <Label htmlFor="mentorDesignation">Designation</Label>
-                            <div className="mt-1">
-                              <Input
-                                id="mentorDesignation"
-                                placeholder="e.g. Senior Staff Architect"
-                                value={mentorDesignation}
-                                onChange={(e) => setMentorDesignation(e.target.value)}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
 
                     {/* Student Resume Upload Field */}
                     {role === 'student' && (
@@ -876,7 +1118,11 @@ export default function RegisterPage() {
                     )}
 
                     <Button type="submit" className="w-full mt-2 text-xs font-semibold h-10" size="lg" loading={isSubmitting || Boolean(processingStage)}>
-                      {role === 'hr' ? 'Submit Company Registration' : 'Create Account'}
+                      {role === 'hr'
+                        ? 'Submit Company Registration'
+                        : role === 'mentor'
+                        ? 'Verify & Register as Mentor'
+                        : 'Create Account'}
                     </Button>
 
                     <p className="text-[11px] text-slate-400 text-center">

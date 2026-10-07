@@ -356,6 +356,19 @@ export default function BrowseInternshipsPage() {
       if (appliedIds.includes(internship.id)) {
         return;
       }
+      
+      // -----------------------------------------------------
+      // Check if internship is still open
+      // -----------------------------------------------------
+      const internshipSnapshot = await getDoc(doc(db, "internships", internship.id));
+      if (internshipSnapshot.exists()) {
+        const currentData = internshipSnapshot.data();
+        if (currentData.status === "closed") {
+          setError("This internship is no longer accepting applications.");
+          setInternships((prev) => prev.filter(i => i.id !== internship.id));
+          return;
+        }
+      }
 
       let targetHrId = internship.hrId || "";
       if (!targetHrId && internship.companyId) {

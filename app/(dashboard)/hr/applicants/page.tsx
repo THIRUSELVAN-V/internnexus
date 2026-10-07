@@ -349,6 +349,33 @@ export default function HRApplicantsPage() {
             : applicant,
         ),
       );
+
+      if (target?.application?.internshipId) {
+        const internshipId = target.application.internshipId;
+        const internshipSnapshot = await getDoc(doc(db, "internships", internshipId));
+        
+        if (internshipSnapshot.exists()) {
+          const internshipData = internshipSnapshot.data();
+          const openings = Number(internshipData.openings) || 1;
+          
+          const applicationsRef = collection(db, "applications");
+          const q = query(
+            applicationsRef,
+            where("internshipId", "==", internshipId),
+            where("status", "in", ["hr_shortlisted", "mentor_assigned", "accepted"])
+          );
+          
+          const shortlistedSnapshot = await getDocs(q);
+          const shortlistedCount = shortlistedSnapshot.size;
+          
+          if (shortlistedCount >= openings && internshipData.status !== "closed") {
+            await updateDoc(doc(db, "internships", internshipId), {
+              status: "closed",
+              updatedAt: new Date().toISOString()
+            });
+          }
+        }
+      }
     } catch (err) {
       console.error("Error shortlisting applicant:", err);
 

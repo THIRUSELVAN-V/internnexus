@@ -85,6 +85,20 @@ export interface MentorProfile extends UserProfile {
   linkedinURL?: string;
 }
 
+export interface AuthorizedMentor {
+  id: string;
+  name: string;
+  email: string;
+  companyId: string;
+  companyName?: string;
+  addedByHR: string;
+  addedByHRName?: string;
+  createdAt: string;
+  registered: boolean;
+  registeredAt?: string;
+  mentorUserId?: string;
+}
+
 export interface AdminProfile extends UserProfile {
   role: 'admin';
   permissions?: string[];
