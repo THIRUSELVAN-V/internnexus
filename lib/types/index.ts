@@ -78,7 +78,9 @@ export interface MentorProfile extends UserProfile {
   companyName?: string;
   designation?: string;
   expertise?: string[];
+  skills?: string[];
   yearsOfExperience?: number;
+  experience?: string | number;
   currentWorkload?: number; // number of active mentees
   maxMentees?: number;
   bio?: string;
@@ -97,6 +99,10 @@ export interface AuthorizedMentor {
   registered: boolean;
   registeredAt?: string;
   mentorUserId?: string;
+  phone?: string;
+  designation?: string;
+  experience?: string | number;
+  expertise?: string[];
 }
 
 export interface AdminProfile extends UserProfile {

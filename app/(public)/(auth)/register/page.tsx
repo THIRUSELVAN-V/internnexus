@@ -10,7 +10,7 @@ import { z } from 'zod';
 import {
   Eye, EyeOff, Zap, Mail, Lock, User as UserIcon, ChevronRight,
   GraduationCap, Building2, UserCheck, FileText, Upload, Sparkles, AlertCircle, Loader2,
-  Phone, MapPin, Globe, Hash, Clock, ArrowRight, ShieldCheck, Search, Check, X
+  Phone, MapPin, Globe, Hash, Clock, ArrowRight, ShieldCheck, Search, Check, X, Briefcase
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,6 +58,19 @@ export default function RegisterPage() {
   const [companySearchQuery, setCompanySearchQuery] = useState('');
   const [isCompanyDropdownOpen, setIsCompanyDropdownOpen] = useState(false);
   const companyDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Mentor Personal / Professional Details (Mentor only)
+  const [mentorDesignation, setMentorDesignation] = useState('');
+  const [mentorPhone, setMentorPhone] = useState('');
+  const [mentorExperience, setMentorExperience] = useState('');
+  const [mentorExpertise, setMentorExpertise] = useState('');
+  const [mentorErrors, setMentorErrors] = useState<{
+    company?: string;
+    designation?: string;
+    phone?: string;
+    experience?: string;
+    expertise?: string;
+  }>({});
 
   // Resume upload state (students only)
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -137,6 +150,11 @@ export default function RegisterPage() {
     setSelectedCompany(null);
     setCompanySearchQuery('');
     setIsCompanyDropdownOpen(false);
+    setMentorDesignation('');
+    setMentorPhone('');
+    setMentorExperience('');
+    setMentorExpertise('');
+    setMentorErrors({});
     if (r === 'mentor' && approvedCompanies.length === 0) {
       loadApprovedCompanies();
     }
@@ -246,6 +264,69 @@ export default function RegisterPage() {
       }
     }
 
+    // Validate Mentor-specific details
+    if (role === 'mentor') {
+      const fieldErrors: {
+        company?: string;
+        designation?: string;
+        phone?: string;
+        experience?: string;
+        expertise?: string;
+      } = {};
+
+      if (!selectedCompany) {
+        fieldErrors.company = 'Please search and select your company from the dropdown.';
+      }
+
+      if (!mentorDesignation.trim()) {
+        fieldErrors.designation = 'Please enter your Designation / Job Title.';
+      }
+
+      if (!mentorPhone.trim()) {
+        fieldErrors.phone = 'Please enter your Phone Number.';
+      } else {
+        const cleanPhone = mentorPhone.replace(/\D/g, '');
+        if (cleanPhone.length < 10) {
+          fieldErrors.phone = 'Please enter a valid Phone Number (at least 10 digits).';
+        }
+      }
+
+      if (!mentorExperience.trim()) {
+        fieldErrors.experience = 'Please enter your Experience.';
+      } else {
+        const cleanExp = mentorExperience.replace(/[^0-9.]/g, '');
+        if (!cleanExp || isNaN(parseFloat(cleanExp)) || parseFloat(cleanExp) < 0) {
+          fieldErrors.experience = 'Please enter a valid number of years for Experience.';
+        }
+      }
+
+      if (!mentorExpertise.trim()) {
+        fieldErrors.expertise = 'Please enter your areas of Expertise.';
+      } else {
+        const expList = mentorExpertise
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (expList.length === 0) {
+          fieldErrors.expertise = 'Please enter at least one skill or domain in Expertise.';
+        }
+      }
+
+      if (Object.keys(fieldErrors).length > 0) {
+        setMentorErrors(fieldErrors);
+        const firstErrMsg =
+          fieldErrors.company ||
+          fieldErrors.designation ||
+          fieldErrors.phone ||
+          fieldErrors.experience ||
+          fieldErrors.expertise;
+        setError(firstErrMsg || 'Please fill in all required mentor fields.');
+        return;
+      }
+
+      setMentorErrors({});
+    }
+
     let verifiedCompanyName = selectedCompany?.name || '';
     let authorizedMentorDocId: string | null = null;
     let authorizedAddedByHR: string | null = null;
@@ -317,11 +398,21 @@ export default function RegisterPage() {
       // 3. If Mentor: Associate with authorized company & update authorization record
       if (role === 'mentor' && userProfile?.uid) {
         const compName = verifiedCompanyName || selectedCompany!.name;
+        const parsedExp = parseFloat(mentorExperience.replace(/[^0-9.]/g, '')) || 0;
+        const expertiseList = mentorExpertise
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
 
         await updateUserProfile(userProfile.uid, {
           companyId: selectedCompany!.id,
           companyName: compName,
-          designation: 'Industrial Mentor',
+          designation: mentorDesignation.trim(),
+          phone: mentorPhone.trim(),
+          experience: mentorExperience.trim(),
+          yearsOfExperience: parsedExp,
+          expertise: expertiseList,
+          skills: expertiseList,
           currentWorkload: 0,
           maxMentees: 5,
         } as Partial<MentorProfile>);
@@ -334,6 +425,10 @@ export default function RegisterPage() {
               companyId: selectedCompany!.id,
               authorizedMentorDocId,
               mentorUserId: userProfile.uid,
+              phone: mentorPhone.trim(),
+              designation: mentorDesignation.trim(),
+              experience: mentorExperience.trim(),
+              expertise: expertiseList,
             }),
           }).catch((err) => console.error('Failed to update authorized mentor record:', err));
         }
@@ -507,7 +602,7 @@ export default function RegisterPage() {
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className={cn('w-full transition-all duration-300', role === 'hr' && step === 2 && !hrSuccessSubmitted ? 'max-w-2xl' : 'max-w-[540px]')}
+        className={cn('w-full transition-all duration-300', (role === 'hr' || role === 'mentor') && step === 2 && !hrSuccessSubmitted ? 'max-w-2xl' : 'max-w-[540px]')}
       >
         {/* Platform Brand */}
         <Link href="/" className="flex items-center gap-2.5 mb-6 justify-center">
@@ -877,6 +972,7 @@ export default function RegisterPage() {
                                             setCompanySearchQuery(comp.name);
                                             setIsCompanyDropdownOpen(false);
                                             setError('');
+                                            setMentorErrors((prev) => ({ ...prev, company: undefined }));
                                           }}
                                           className="w-full flex items-center justify-between p-2.5 text-left rounded-lg hover:bg-green-50 transition-colors group"
                                         >
@@ -896,9 +992,117 @@ export default function RegisterPage() {
                               )}
                             </div>
                           )}
+                          {mentorErrors.company && !selectedCompany && (
+                            <p className="text-xs text-red-600 mt-1 font-medium">{mentorErrors.company}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Mentor Professional & Contact Information */}
+                      {role === 'mentor' && (
+                        <div className="pt-3 border-t border-slate-100 space-y-3.5">
+                          <div className="pb-1">
+                            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5 uppercase tracking-wider text-green-700">
+                              <Briefcase className="h-3.5 w-3.5 text-green-600" />
+                              Mentor Professional Details
+                            </span>
+                            <p className="text-[11px] text-slate-500">
+                              Provide your designation, contact number, years of experience, and key technical expertise.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <Label htmlFor="mentor-designation" required>
+                                Designation
+                              </Label>
+                              <div className="mt-1">
+                                <Input
+                                  id="mentor-designation"
+                                  placeholder="e.g. Senior Software Engineer"
+                                  leftIcon={<Briefcase className="h-3.5 w-3.5 text-slate-400" />}
+                                  value={mentorDesignation}
+                                  onChange={(e) => {
+                                    setMentorDesignation(e.target.value);
+                                    if (mentorErrors.designation) {
+                                      setMentorErrors((prev) => ({ ...prev, designation: undefined }));
+                                    }
+                                  }}
+                                  error={mentorErrors.designation}
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <Label htmlFor="mentor-phone" required>
+                                Phone
+                              </Label>
+                              <div className="mt-1">
+                                <Input
+                                  id="mentor-phone"
+                                  type="tel"
+                                  placeholder="+91 98765 43210"
+                                  leftIcon={<Phone className="h-3.5 w-3.5 text-slate-400" />}
+                                  value={mentorPhone}
+                                  onChange={(e) => {
+                                    setMentorPhone(e.target.value);
+                                    if (mentorErrors.phone) {
+                                      setMentorErrors((prev) => ({ ...prev, phone: undefined }));
+                                    }
+                                  }}
+                                  error={mentorErrors.phone}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <Label htmlFor="mentor-experience" required>
+                                Experience
+                              </Label>
+                              <div className="mt-1">
+                                <Input
+                                  id="mentor-experience"
+                                  placeholder="e.g. 5 years or 5"
+                                  leftIcon={<Clock className="h-3.5 w-3.5 text-slate-400" />}
+                                  value={mentorExperience}
+                                  onChange={(e) => {
+                                    setMentorExperience(e.target.value);
+                                    if (mentorErrors.experience) {
+                                      setMentorErrors((prev) => ({ ...prev, experience: undefined }));
+                                    }
+                                  }}
+                                  error={mentorErrors.experience}
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <Label htmlFor="mentor-expertise" required>
+                                Expertise
+                              </Label>
+                              <div className="mt-1">
+                                <Input
+                                  id="mentor-expertise"
+                                  placeholder="e.g. React, Node.js, Cloud, DevOps"
+                                  leftIcon={<Sparkles className="h-3.5 w-3.5 text-slate-400" />}
+                                  value={mentorExpertise}
+                                  onChange={(e) => {
+                                    setMentorExpertise(e.target.value);
+                                    if (mentorErrors.expertise) {
+                                      setMentorErrors((prev) => ({ ...prev, expertise: undefined }));
+                                    }
+                                  }}
+                                  error={mentorErrors.expertise}
+                                />
+                              </div>
+                              <p className="text-[11px] text-slate-400 mt-1">Separate skills or domains with commas.</p>
+                            </div>
+                          </div>
 
                           <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-[11px] text-amber-900 leading-relaxed">
-                            <strong>HR Authorization Check:</strong> Your registration will only succeed if your company&apos;s HR has previously authorized your name and email in the system.
+                            <strong>HR Authorization Check:</strong> Your registration will only succeed if the selected Company, Full Name, and Email match the mentor details previously added by that company&apos;s HR.
                           </div>
                         </div>
                       )}

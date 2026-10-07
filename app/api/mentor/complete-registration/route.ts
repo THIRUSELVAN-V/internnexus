@@ -7,7 +7,15 @@ export const runtime = 'nodejs';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { companyId, authorizedMentorDocId, mentorUserId } = body;
+    const {
+      companyId,
+      authorizedMentorDocId,
+      mentorUserId,
+      phone,
+      designation,
+      experience,
+      expertise,
+    } = body;
 
     if (!companyId || !authorizedMentorDocId || !mentorUserId) {
       return NextResponse.json(
@@ -17,14 +25,21 @@ export async function POST(request: Request) {
     }
 
     await withServerDb(async (db) => {
+      const updatePayload: Record<string, any> = {
+        registered: true,
+        mentorUserId,
+        registeredAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (phone) updatePayload.phone = phone;
+      if (designation) updatePayload.designation = designation;
+      if (experience !== undefined && experience !== null) updatePayload.experience = experience;
+      if (expertise) updatePayload.expertise = expertise;
+
       await updateDoc(
         doc(db, 'companies', companyId, 'authorizedMentors', authorizedMentorDocId),
-        {
-          registered: true,
-          mentorUserId,
-          registeredAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
+        updatePayload
       );
     });
 
