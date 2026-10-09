@@ -107,12 +107,12 @@ export default function HRDashboardPage() {
             <Sparkles className="h-3.5 w-3.5" /> HR Command Center
           </span>
           <h1 className="text-2xl font-bold tracking-tight">Corporate HR Dashboard</h1>
-          <p className="text-purple-100 text-sm mt-1 max-w-xl">
+          <p style={{color:"white"}} className="text-purple-100 text-sm mt-1 max-w-xl">
             Review AI candidate rankings, assign mentors, monitor active interns, and issue completion certificates.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <Button asChild variant="secondary" className="bg-white/20 text-white hover:bg-white/30 border-none font-semibold text-xs sm:text-sm">
+          <Button style={{color:"white"}} asChild variant="secondary" className="bg-white/20 text-white hover:bg-white/30 border-none font-semibold text-xs sm:text-sm">
             <Link href="/hr/mentors">
               <UserCheck className="h-4 w-4 mr-1" /> Company Mentors
             </Link>

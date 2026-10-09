@@ -352,6 +352,7 @@ export default function HRApplicantDetailPage({
           </Button>
 
           <Button
+            
             size="sm"
             className="bg-purple-600 hover:bg-purple-700 text-white"
             asChild

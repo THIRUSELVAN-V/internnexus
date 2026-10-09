@@ -106,7 +106,7 @@ export default function MentorTasksPage() {
           <h1 className="text-xl font-bold text-slate-900">Task Management Directory</h1>
           <p className="text-xs text-slate-500">Manage all weekly tasks assigned to your student mentees</p>
         </div>
-        <Button asChild className="bg-green-600 hover:bg-green-700 text-white font-semibold">
+        <Button style={{color:"white"}} asChild className="bg-green-600 hover:bg-green-700 text-white font-semibold">
           <Link href="/mentor/task-generator">
             <Plus className="h-4 w-4 mr-1.5" /> AI Task Generator
           </Link>

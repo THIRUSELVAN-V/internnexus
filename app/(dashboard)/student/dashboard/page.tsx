@@ -86,7 +86,7 @@ export default function StudentDashboardPage() {
             <Sparkles className="h-3.5 w-3.5" /> Welcome back, {profile?.displayName || 'Student'}!
           </span>
           <h1 className="text-2xl font-bold tracking-tight">Student Internship Hub</h1>
-          <p className="text-blue-100 text-sm mt-1 max-w-xl">
+          <p style={{color:"white"}} className="text-blue-100 text-sm mt-1 max-w-xl">
             Track applications, complete mentor-assigned deliverables, view AI match scores, and download certificates.
           </p>
         </div>

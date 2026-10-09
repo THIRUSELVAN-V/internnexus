@@ -594,6 +594,7 @@ export default function HRApplicantsPage() {
             {/* Assign Mentor */}
             {canAssignMentor && (
               <Button
+                style={{color:"white"}}
                 size="sm"
                 className="bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs"
                 asChild
