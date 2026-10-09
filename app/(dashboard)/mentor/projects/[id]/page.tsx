@@ -26,10 +26,9 @@ import {
   Check,
 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { getDocument, setDocument, createDocument } from '@/lib/firebase/firestore';
-import { Project, ProjectTaskRoadmap, Task } from '@/lib/types';
+import { getDocument, setDocument, createDocument, getDocuments } from '@/lib/firebase/firestore';
+import { Project, ProjectTaskRoadmap, Task, StudentProfile } from '@/lib/types';
 import { analyzeProjectAndGenerateRoadmap } from '@/lib/ai/projectAnalyzer';
-import { DUMMY_MENTEES } from '@/lib/utils/constants';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -41,6 +40,7 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
 
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<Project | null>(null);
+  const [realMentees, setRealMentees] = useState<{ id: string; name: string; skills: string[] }[]>([]);
   const [description, setDescription] = useState('');
   const [domain, setDomain] = useState('');
   const [isSavingDesc, setIsSavingDesc] = useState(false);
@@ -51,9 +51,6 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
   const [distributionSuccess, setDistributionSuccess] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
-
-  const allDummyIds = DUMMY_MENTEES.map((d) => d.studentId);
-  const allDummyNames = DUMMY_MENTEES.map((d) => d.name);
 
   const fetchProjectData = async () => {
     setLoading(true);
@@ -67,45 +64,43 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
         setProject(doc);
         setDescription(doc.description || '');
         setDomain(doc.domain || '');
+
+        // Fetch real mentee profiles from the users collection
+        if (doc.assignedMenteeIds?.length) {
+          try {
+            const allUsers = await getDocuments<StudentProfile>('users');
+            const menteeProfiles = allUsers
+              .filter((u) => doc.assignedMenteeIds!.includes(u.uid))
+              .map((u, idx) => ({
+                id: u.uid,
+                name: u.displayName || doc.assignedMenteeNames?.[idx] || 'Mentee',
+                skills: [
+                  ...(u.resumeAnalysis?.skills || []),
+                  ...(u.resumeAnalysis?.technicalSkills || []),
+                  ...(u.resumeAnalysis?.programmingLanguages || []),
+                  ...(u.skills || []),
+                ].filter(Boolean),
+              }));
+            setRealMentees(menteeProfiles);
+          } catch (e) {
+            console.warn('Could not fetch mentee profiles:', e);
+            // Fallback: build from project's stored names
+            setRealMentees(
+              doc.assignedMenteeIds.map((id, idx) => ({
+                id,
+                name: doc.assignedMenteeNames?.[idx] || 'Mentee',
+                skills: [],
+              }))
+            );
+          }
+        }
       } else {
-        // Fallback demo project structure with all 10 dummy mentees
-        const fallbackProject: Project = {
-          id: projectId,
-          title: 'Enterprise AI Portal & Analytics Dashboard',
-          domain: 'Full Stack Web Development',
-          description:
-            'Architect and build an end-to-end enterprise portal with user authentication, real-time analytics pipelines, responsive React dashboards, and AI recommendation engines.',
-          mentorId: profile?.uid || 'mentor-1',
-          mentorName: profile?.displayName || 'Dr. Aris Thorne',
-          assignedMenteeIds: allDummyIds,
-          assignedMenteeNames: allDummyNames,
-          status: 'planning',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        setProject(fallbackProject);
-        setDescription(fallbackProject.description);
-        setDomain(fallbackProject.domain);
+        // Project not found — show empty state
+        setProject(null);
       }
     } catch (err) {
       console.error('Error fetching project detail:', err);
-      const fallbackProject: Project = {
-        id: projectId,
-        title: 'Enterprise AI Portal & Analytics Dashboard',
-        domain: 'Full Stack Web Development',
-        description:
-          'Architect and build an end-to-end enterprise portal with user authentication, real-time analytics pipelines, responsive React dashboards, and AI recommendation engines.',
-        mentorId: profile?.uid || 'mentor-1',
-        mentorName: profile?.displayName || 'Dr. Aris Thorne',
-        assignedMenteeIds: allDummyIds,
-        assignedMenteeNames: allDummyNames,
-        status: 'planning',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setProject(fallbackProject);
-      setDescription(fallbackProject.description);
-      setDomain(fallbackProject.domain);
+      setProject(null);
     } finally {
       setLoading(false);
     }
@@ -143,22 +138,12 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
     setIsAnalyzing(true);
     setAiError(null);
     try {
-      const menteeList = DUMMY_MENTEES.map((d) => ({
-        id: d.studentId,
-        name: d.name,
-        skills: [
-          d.role,
-          d.university,
-          ...(d.role.includes('Frontend') ? ['React', 'HTML', 'CSS', 'Tailwind', 'UI/UX'] : []),
-          ...(d.role.includes('Backend') ? ['Node.js', 'Express', 'SQL', 'Database', 'API'] : []),
-          ...(d.role.includes('Full Stack') ? ['React', 'Node.js', 'TypeScript', 'Firebase', 'Full Stack'] : []),
-          ...(d.role.includes('AI') ? ['Python', 'Machine Learning', 'AI', 'Algorithms'] : []),
-          ...(d.role.includes('Cloud') ? ['Docker', 'DevOps', 'Cloud', 'Architecture'] : []),
-          ...(d.role.includes('Mobile') ? ['Mobile App', 'React Native', 'Flutter'] : []),
-          ...(d.role.includes('Data') ? ['Data Science', 'Analytics', 'Python'] : []),
-          ...(d.role.includes('Cyber') ? ['Security', 'Auth', 'Cybersecurity'] : []),
-        ],
-        role: d.role,
+      // Build mentee list from real mentees fetched from Firestore
+      const menteeList = realMentees.map((m) => ({
+        id: m.id,
+        name: m.name,
+        skills: m.skills,
+        role: m.skills[0] || 'Intern',
       }));
 
       const roadmap = await analyzeProjectAndGenerateRoadmap(
@@ -168,7 +153,7 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
         menteeList
       );
 
-      const menteeIds = project.assignedMenteeIds?.length ? project.assignedMenteeIds : allDummyIds;
+      const menteeIds = project.assignedMenteeIds?.length ? project.assignedMenteeIds : [];
       const initialStepIndexes: Record<string, number> = {};
       menteeIds.forEach((mId) => {
         initialStepIndexes[mId] = 1;
@@ -191,7 +176,7 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
           mentorId: profile?.uid || project.mentorId || 'mentor-demo',
           mentorName: profile?.displayName || project.mentorName || 'Industrial Mentor',
           assignedMenteeIds: menteeIds,
-          assignedMenteeNames: project.assignedMenteeNames?.length ? project.assignedMenteeNames : allDummyNames,
+          assignedMenteeNames: project.assignedMenteeNames || [],
           aiRoadmap: roadmap,
           currentStepIndex: initialStepIndexes,
           status: 'active',
@@ -208,7 +193,7 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
               domain: domain || prev.domain,
               description: description || prev.description,
               assignedMenteeIds: menteeIds,
-              assignedMenteeNames: prev.assignedMenteeNames?.length ? prev.assignedMenteeNames : allDummyNames,
+              assignedMenteeNames: prev.assignedMenteeNames || [],
               aiRoadmap: roadmap,
               currentStepIndex: initialStepIndexes,
               status: 'active',
@@ -230,20 +215,14 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
 
     const selectedTarget = phaseTargetMentees[phase.stepIndex] || 'all';
 
-    let targetMenteeIds = project.assignedMenteeIds?.length ? project.assignedMenteeIds : allDummyIds;
-    let targetMenteeNames = project.assignedMenteeNames?.length ? project.assignedMenteeNames : allDummyNames;
+    let targetMenteeIds = project.assignedMenteeIds?.length ? project.assignedMenteeIds : [];
+    let targetMenteeNames = project.assignedMenteeNames?.length ? project.assignedMenteeNames : [];
 
     if (selectedTarget !== 'all') {
       const idx = targetMenteeIds.indexOf(selectedTarget);
       if (idx !== -1) {
         targetMenteeIds = [selectedTarget];
         targetMenteeNames = [targetMenteeNames[idx] || 'Assigned Mentee'];
-      } else {
-        const dummyMatch = DUMMY_MENTEES.find((d) => d.studentId === selectedTarget);
-        if (dummyMatch) {
-          targetMenteeIds = [dummyMatch.studentId];
-          targetMenteeNames = [dummyMatch.name];
-        }
       }
     }
 
@@ -325,7 +304,7 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
     );
   }
 
-  const activeMenteeNames = project.assignedMenteeNames?.length ? project.assignedMenteeNames : allDummyNames;
+  const activeMenteeNames = project.assignedMenteeNames?.length ? project.assignedMenteeNames : [];
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -557,11 +536,11 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all" className="text-xs font-semibold">
-                              All 10 Mentees (AI Default)
+                              All {realMentees.length} Mentee{realMentees.length !== 1 ? 's' : ''} (Default)
                             </SelectItem>
-                            {DUMMY_MENTEES.map((m) => (
-                              <SelectItem key={m.studentId} value={m.studentId} className="text-xs">
-                                {m.name} ({m.role.split(' ')[0]})
+                            {realMentees.map((m) => (
+                              <SelectItem key={m.id} value={m.id} className="text-xs">
+                                {m.name}
                               </SelectItem>
                             ))}
                           </SelectContent>

@@ -28,31 +28,7 @@ import {
 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments, createDocument } from '@/lib/firebase/firestore';
-import { Project, MentorAssignment, MentorProfile } from '@/lib/types';
-import { DUMMY_MENTEES } from '@/lib/utils/constants';
-
-const DEFAULT_PROJECTS: Project[] = [
-  {
-    id: 'proj-demo-1',
-    title: 'Enterprise AI Portal & Analytics Dashboard',
-    domain: 'Full Stack Web Development',
-    description:
-      'Architect and build an end-to-end enterprise portal with user authentication, real-time analytics pipelines, responsive React dashboards, and AI recommendation engines.',
-    mentorId: 'mock-mentor-id',
-    mentorName: 'Dr. Aris Thorne',
-    companyId: 'comp-1',
-    companyName: 'TechCorp Solutions',
-    assignedMenteeIds: ['std-1', 'std-2'],
-    assignedMenteeNames: ['Alex Rivera', 'Priya Sharma'],
-    status: 'planning',
-    currentStepIndex: {
-      'std-1': 1,
-      'std-2': 1,
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
+import { Project, MentorAssignment, MentorProfile, Application, UserProfile } from '@/lib/types';
 
 export default function MentorProjectsPage() {
   const { profile } = useAuthContext();
@@ -71,37 +47,69 @@ export default function MentorProjectsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [projDocs, assignmentDocs] = await Promise.all([
+      const [projDocs, assignmentDocs, applicationDocs, userDocs] = await Promise.all([
         getDocuments<Project>('projects'),
         getDocuments<MentorAssignment>('mentorAssignments'),
+        getDocuments<Application>('applications'),
+        getDocuments<UserProfile>('users'),
       ]);
 
-      const myAssignments = profile?.uid
-        ? assignmentDocs.filter((a) => a.mentorId === profile.uid)
-        : assignmentDocs;
+      const myMentorId = profile?.uid;
 
-      const existingMenteeIds = new Set(myAssignments.map((a) => a.studentId));
-      const combinedMentees = [
-        ...myAssignments.map((a) => ({ id: a.studentId, name: a.studentName })),
-        ...DUMMY_MENTEES.filter((d) => !existingMenteeIds.has(d.studentId)).map((d) => ({
-          id: d.studentId,
-          name: d.name,
-        })),
-      ];
-      setMentees(combinedMentees);
+      // Extract this mentor's real assignments
+      const myAssignments = myMentorId
+        ? assignmentDocs.filter((a) => a.mentorId === myMentorId)
+        : [];
 
-      const myProjects = profile?.uid
-        ? projDocs.filter((p) => p.mentorId === profile.uid)
-        : projDocs;
+      // Also check applications where this mentor is assigned
+      const myApplications = myMentorId
+        ? applicationDocs.filter((a) => a.mentorId === myMentorId)
+        : [];
 
-      if (myProjects.length > 0) {
-        setProjects(myProjects);
-      } else {
-        setProjects(DEFAULT_PROJECTS);
-      }
+      // Map to hold unique mentee studentId -> name
+      const menteeMap = new Map<string, string>();
+
+      myAssignments.forEach((a) => {
+        if (a.studentId) {
+          menteeMap.set(a.studentId, a.studentName || 'Student');
+        }
+      });
+
+      myApplications.forEach((app) => {
+        if (app.studentId) {
+          const current = menteeMap.get(app.studentId);
+          if (!current || current === 'Student') {
+            menteeMap.set(app.studentId, app.studentName || 'Student');
+          }
+        }
+      });
+
+      // Update names with fresh data from users collection if available
+      userDocs.forEach((u) => {
+        if (menteeMap.has(u.uid)) {
+          const freshName = u.displayName || (u as any).name;
+          if (freshName) {
+            menteeMap.set(u.uid, freshName);
+          }
+        }
+      });
+
+      const myMentees = Array.from(menteeMap.entries()).map(([id, name]) => ({
+        id,
+        name,
+      }));
+
+      setMentees(myMentees);
+
+      const myProjects = myMentorId
+        ? projDocs.filter((p) => p.mentorId === myMentorId)
+        : [];
+
+      setProjects(myProjects);
     } catch (err) {
       console.error('Error fetching mentor projects data:', err);
-      setProjects(DEFAULT_PROJECTS);
+      setProjects([]);
+      setMentees([]);
     } finally {
       setLoading(false);
     }

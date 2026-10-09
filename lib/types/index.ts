@@ -218,6 +218,7 @@ export interface Application {
 
   mentorId?: string;
   mentorName?: string;
+  mentorRecommendations?: MentorRecommendation[];
 }
 
 // ─── Mentor Assignment ────────────────────────────────────────────────────────
