@@ -4,7 +4,7 @@ import React, { Suspense, useEffect, useState } from "react";
 
 import { useSearchParams } from "next/navigation";
 
-import { CheckCircle2, UserCheck, Loader2, AlertCircle } from "lucide-react";
+import { CheckCircle2, UserCheck, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 
 import MentorRecommendationCard from "@/components/ai/MentorRecommendationCard";
 
@@ -142,6 +142,11 @@ function HRMentorRecommendationContent() {
           if (applicationData.mentorName) {
             setConfirmedMentorName(applicationData.mentorName);
           }
+        } else if (
+          Array.isArray(applicationData.mentorRecommendations) &&
+          applicationData.mentorRecommendations.length > 0
+        ) {
+          setRecommendations(applicationData.mentorRecommendations);
         }
 
         // ---------------------------------------------------
@@ -678,10 +683,29 @@ function HRMentorRecommendationContent() {
             onSelectMentor={(id) => setSelectedMentor(id)}
           />
 
-          <div className="flex justify-end pt-2">
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={handleGenerateRecommendations}
+              disabled={analyzing || confirming}
+              className="text-xs font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-700"
+            >
+              {analyzing ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                  Regenerate Recommendations
+                </>
+              )}
+            </Button>
+
             <Button
               onClick={handleConfirmAssignment}
-              disabled={!selectedMentor || confirming}
+              disabled={!selectedMentor || confirming || analyzing}
               className="bg-purple-600 hover:bg-purple-700"
             >
               {confirming ? (

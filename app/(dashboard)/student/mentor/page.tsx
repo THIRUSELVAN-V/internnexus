@@ -2,10 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { GraduationCap, Mail, Building2, Calendar, MessageSquare, Loader2, Sparkles, CheckCircle2 } from 'lucide-react';
+import { GraduationCap, Mail, Building2, Calendar, Loader2, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getDocuments } from '@/lib/firebase/firestore';
 import { MentorAssignment, UserProfile, MentorProfile } from '@/lib/types';
@@ -91,10 +90,6 @@ export default function StudentMentorPage() {
                   </div>
                 )}
               </div>
-
-              <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs">
-                <MessageSquare className="h-3.5 w-3.5 mr-1.5" /> Message Mentor
-              </Button>
             </CardContent>
           </Card>
 
