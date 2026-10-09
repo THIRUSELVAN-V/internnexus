@@ -1,44 +1,59 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Eye, EyeOff, Zap, Mail, Lock, ArrowRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { signIn, getUserProfile } from '@/lib/firebase/auth';
+import React, { useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Eye, EyeOff, Zap, Mail, Lock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { signIn, getUserProfile } from "@/lib/firebase/auth";
 
 const loginSchema = z.object({
-  email: z.string().email('Enter a valid email'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: z.string().email("Enter a valid email"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });
+
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
   });
 
   const onSubmit = async (data: LoginForm) => {
-    setError('');
+    setError("");
+
     try {
       const user = await signIn(data.email, data.password);
       const profile = await getUserProfile(user.uid);
-      if (!profile) throw new Error('Profile not found');
+
+      if (!profile) throw new Error("Profile not found");
+
       router.push(`/${profile.role}/dashboard`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Invalid email or password';
-      if (msg.includes('user-not-found') || msg.includes('wrong-password') || msg.includes('invalid-credential')) {
-        setError('Invalid email or password');
+      const msg =
+        err instanceof Error ? err.message : "Invalid email or password";
+
+      if (
+        msg.includes("user-not-found") ||
+        msg.includes("wrong-password") ||
+        msg.includes("invalid-credential")
+      ) {
+        setError("Invalid email or password");
       } else {
         setError(msg);
       }
@@ -46,124 +61,193 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left Panel */}
-      <div className="hidden lg:flex lg:flex-col lg:w-[480px] xl:w-[540px] bg-blue-600 px-12 py-10">
-        <Link href="/" className="flex items-center gap-2.5 mb-auto">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20">
-            <Zap className="h-4 w-4 text-white" />
-          </div>
-          <span className="text-base font-bold text-white">InternNexus</span>
+    <div className="flex min-h-screen overflow-x-hidden bg-white lg:h-dvh lg:min-h-0">
+      {/* Left panel */}
+      <aside className="relative hidden min-h-0 flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-sky-50 via-white to-blue-100 px-6 py-6 lg:flex lg:w-1/2 xl:w-[55%]">
+        <div className="pointer-events-none absolute -left-20 top-16 h-56 w-56 rounded-full bg-blue-200/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 right-0 h-56 w-56 rounded-full bg-sky-300/25 blur-3xl" />
+
+        {/* Logo stays visible above the image */}
+        <Link
+          href="/"
+          className="absolute left-7 top-5 z-20 flex items-center gap-2 xl:left-9"
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 shadow-md shadow-blue-600/20">
+            <Zap className="h-5 w-5 text-white" />
+          </span>
+          <span className="text-lg font-extrabold tracking-tight text-slate-900">
+            Intern<span className="text-blue-600">Nexus</span>
+          </span>
         </Link>
 
-        <div className="my-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <h2 className="text-4xl font-bold text-white leading-tight mb-4">
-              Welcome back to<br />your portal
-            </h2>
-            <p className="text-blue-200 text-base leading-relaxed mb-8">
-              Sign in to access your dashboard, track applications, manage tasks, and stay connected with your team.
-            </p>
-            <div className="space-y-3">
-              {[
-                'AI-powered internship matching',
-                'Real-time task management',
-                'Smart mentor recommendations',
-                'Certificate generation',
-              ].map((item) => (
-                <div key={item} className="flex items-center gap-3 text-blue-100 text-sm">
-                  <div className="h-5 w-5 rounded-full bg-white/20 flex items-center justify-center">
-                    <ArrowRight className="h-3 w-3 text-white" />
-                  </div>
-                  {item}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-
-        <p className="text-blue-300 text-xs mt-auto">© 2026 InternNexus</p>
-      </div>
-
-      {/* Right Panel */}
-      <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 bg-white">
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-[400px]"
+          transition={{ duration: 0.6 }}
+          className="relative z-10 flex w-full max-w-[440px] flex-col items-center pt-12"
+        >
+          {/* Smaller responsive image */}
+          <div className="w-full max-w-[360px] xl:max-w-[410px]">
+            <Image
+              src="/images/internnexus-hero.jpg"
+              alt="Discover internship opportunities with InternNexus"
+              width={1024}
+              height={683}
+              priority
+              sizes="(max-width: 1280px) 360px, 410px"
+              className="h-auto max-h-[38dvh] w-full object-contain"
+            />
+          </div>
+
+          <div className="mt-3 max-w-md text-center">
+            <h2 className="bg-gradient-to-r from-blue-700 via-indigo-600 to-sky-500 bg-clip-text text-2xl font-extrabold leading-tight tracking-tight text-transparent xl:text-3xl">
+              Your Career. Your Opportunity.
+            </h2>
+
+            <p className="mx-auto mt-3 max-w-sm text-sm font-medium leading-6 text-slate-600 xl:text-base">
+              Connect with industry mentors, build real-world skills, and turn
+              your internship journey into success.
+            </p>
+
+            <div className="mx-auto mt-4 h-1 w-16 rounded-full bg-gradient-to-r from-blue-600 to-sky-400" />
+          </div>
+        </motion.div>
+
+        <p className="absolute bottom-3 left-0 right-0 text-center text-xs text-slate-400">
+          © 2026 InternNexus · Empowering future professionals
+        </p>
+      </aside>
+
+      {/* Right panel: scrolls only if content needs more room */}
+      <main className="flex min-h-screen flex-1 flex-col items-center justify-center overflow-y-auto bg-white px-5 py-8 sm:px-8 lg:h-dvh lg:min-h-0 lg:py-6">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45 }}
+          className="my-auto w-full max-w-[400px] py-2"
         >
           {/* Mobile logo */}
-          <Link href="/" className="flex items-center gap-2 mb-8 lg:hidden">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
-              <Zap className="h-3.5 w-3.5 text-white" />
-            </div>
-            <span className="text-sm font-bold text-slate-900">InternNexus</span>
+          <Link href="/" className="mb-6 flex items-center gap-2 lg:hidden">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
+              <Zap className="h-4 w-4 text-white" />
+            </span>
+            <span className="text-base font-bold text-slate-900">
+              Intern<span className="text-blue-600">Nexus</span>
+            </span>
           </Link>
 
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Sign in</h1>
-          <p className="text-sm text-slate-500 mb-8">Enter your credentials to access your dashboard</p>
+          {/* Mobile tagline */}
+          <div className="mb-6 text-center lg:hidden">
+            <h2 className="text-xl font-extrabold tracking-tight text-blue-700">
+              Your Career. Your Opportunity.
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Connect with mentors. Build real-world skills. Make your next move
+              count.
+            </p>
+          </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          <div className="mb-6">
+            <h1 className="mb-2 text-3xl font-bold tracking-tight text-slate-900">
+              Sign in
+            </h1>
+            <p className="text-sm leading-6 text-slate-500">
+              Welcome back! Enter your credentials to access your dashboard.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
-              <Label htmlFor="email" required>Email address</Label>
+              <Label htmlFor="email" required>
+                Email address
+              </Label>
               <div className="mt-1.5">
                 <Input
                   id="email"
                   type="email"
                   placeholder="you@example.com"
+                  autoComplete="email"
                   leftIcon={<Mail className="h-4 w-4" />}
                   error={errors.email?.message}
-                  {...register('email')}
+                  {...register("email")}
                 />
               </div>
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <Label htmlFor="password" required>Password</Label>
-                <Link href="/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+              <div className="mb-1.5 flex items-center justify-between">
+                <Label htmlFor="password" required>
+                  Password
+                </Label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                >
                   Forgot password?
                 </Link>
               </div>
+
               <Input
                 id="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••"
+                type={showPassword ? "text" : "password"}
+                placeholder="Enter your password"
+                autoComplete="current-password"
                 leftIcon={<Lock className="h-4 w-4" />}
                 rightIcon={
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="hover:text-slate-600 transition-colors">
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  <button
+                    type="button"
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="hover:text-slate-600"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
                   </button>
                 }
                 error={errors.password?.message}
-                {...register('password')}
+                {...register("password")}
               />
             </div>
 
             {error && (
-              <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm text-red-700">
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700"
+              >
                 {error}
               </div>
             )}
 
-            <Button type="submit" className="w-full" size="lg" loading={isSubmitting}>
+            <Button
+              type="submit"
+              className="w-full"
+              size="lg"
+              loading={isSubmitting}
+            >
               Sign in
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-slate-500">
-            Don&apos;t have an account?{' '}
-            <Link href="/register" className="text-blue-600 font-medium hover:text-blue-700">
+          <p className="mt-5 text-center text-sm text-slate-500">
+            Don&apos;t have an account?{" "}
+            <Link
+              href="/register"
+              className="font-medium text-blue-600 hover:text-blue-700"
+            >
               Create account
             </Link>
           </p>
+
+          <p className="mt-6 text-center text-xs text-slate-400 lg:hidden">
+            © 2026 InternNexus
+          </p>
         </motion.div>
-      </div>
+      </main>
     </div>
   );
 }
