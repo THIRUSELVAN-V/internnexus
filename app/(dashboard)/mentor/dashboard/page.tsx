@@ -76,8 +76,8 @@ export default function MentorDashboardPage() {
           </p>
         </div>
         <Button asChild variant="secondary" className="bg-white text-green-700 hover:bg-green-50 border-none shrink-0 font-semibold text-xs sm:text-sm">
-          <Link href="/mentor/task-generator">
-            <Sparkles className="h-4 w-4 mr-1 text-purple-600" /> Open AI Task Generator
+          <Link href="/mentor/projects">
+            <Sparkles className="h-4 w-4 mr-1 text-purple-600" /> Open Internship Projects
           </Link>
         </Button>
       </div>
@@ -96,7 +96,7 @@ export default function MentorDashboardPage() {
               value={`${assignments.length} Mentees`}
               change="Max Capacity 5"
               trend="neutral"
-              description="Active student mentees"
+              // description="Active student mentees"
               icon={Users}
               iconColor="text-green-600"
               iconBg="bg-green-50"
@@ -106,7 +106,7 @@ export default function MentorDashboardPage() {
               value={`${tasks.length} Tasks`}
               change="AI Generated & Custom"
               trend="up"
-              description="Published tasks"
+              // description="Published tasks"
               icon={CheckSquare}
               iconColor="text-blue-600"
               iconBg="bg-blue-50"
@@ -116,7 +116,7 @@ export default function MentorDashboardPage() {
               value={`${pendingSubmissionsCount} Pending`}
               change="Requires review"
               trend="down"
-              description="Deliverables awaiting grade"
+              // description="Deliverables awaiting grade"
               icon={Inbox}
               iconColor="text-amber-600"
               iconBg="bg-amber-50"
@@ -126,7 +126,7 @@ export default function MentorDashboardPage() {
               value={`${feedbacks.length} Completed`}
               change="Final sign-offs"
               trend="up"
-              description="Student evaluations"
+              // description="Student evaluations"
               icon={Sparkles}
               iconColor="text-purple-600"
               iconBg="bg-purple-50"
@@ -135,7 +135,7 @@ export default function MentorDashboardPage() {
 
           {/* Main Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-2">
+            {/* <Card className="lg:col-span-2">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <div>
                   <CardTitle className="text-base font-bold text-slate-900">Submission Review Velocity</CardTitle>
@@ -153,7 +153,7 @@ export default function MentorDashboardPage() {
                   height={250}
                 />
               </CardContent>
-            </Card>
+            </Card> */}
 
             {/* Assigned Mentees Quick View */}
             <Card>

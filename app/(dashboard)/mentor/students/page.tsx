@@ -120,13 +120,13 @@ export default function MentorStudentsPage() {
       header: 'Actions',
       render: (item) => (
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" asChild>
+          {/* <Button size="sm" variant="outline" asChild>
             <Link href="/mentor/task-generator">
               <Sparkles className="h-3.5 w-3.5 mr-1 text-purple-600" /> AI Task
             </Link>
-          </Button>
-          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white font-semibold text-xs" asChild>
-            <Link href="/mentor/evaluation">Final Evaluation</Link>
+          </Button> */}
+          <Button size="sm" className="!bg-green-600 hover:!bg-green-700 !text-white font-semibold text-xs" asChild>
+            <Link href="/mentor/evaluation" className="!text-white no-underline">Final Evaluation</Link>
           </Button>
         </div>
       ),
