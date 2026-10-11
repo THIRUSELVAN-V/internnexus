@@ -115,11 +115,8 @@ export const MENTOR_NAV_ITEMS = [
   { label: 'Dashboard', href: '/mentor/dashboard', icon: 'LayoutDashboard' },
   { label: 'My Students', href: '/mentor/students', icon: 'Users' },
   { label: 'My Projects', href: '/mentor/projects', icon: 'FolderGit2' },
-  { label: 'AI Task Generator', href: '/mentor/task-generator', icon: 'Sparkles' },
   { label: 'Task Management', href: '/mentor/tasks', icon: 'CheckSquare' },
   { label: 'Submissions', href: '/mentor/submissions', icon: 'Inbox' },
-  { label: 'Feedback', href: '/mentor/feedback', icon: 'MessageSquare' },
-  { label: 'Progress Tracking', href: '/mentor/progress', icon: 'TrendingUp' },
   { label: 'Final Evaluation', href: '/mentor/evaluation', icon: 'Star' },
 ];
 
