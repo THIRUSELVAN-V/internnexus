@@ -104,7 +104,7 @@ export const HR_NAV_ITEMS = [
   { label: 'Internships', href: '/hr/internships', icon: 'Briefcase' },
   { label: 'Applicants', href: '/hr/applicants', icon: 'Users' },
   { label: 'Mentors', href: '/hr/mentors', icon: 'UserCheck' },
-  { label: 'Mentor Assignment', href: '/hr/mentor-recommendation', icon: 'Sparkles' },
+  // { label: 'Mentor Assignment', href: '/hr/mentor-recommendation', icon: 'Sparkles' },
   { label: 'Active Interns', href: '/hr/interns', icon: 'Activity' },
   { label: 'Certificates', href: '/hr/certificates', icon: 'Award' },
   { label: 'Reports', href: '/hr/reports', icon: 'BarChart3' },
