@@ -215,7 +215,7 @@ export default function StudentDashboardPage() {
                         <div className="pt-2 flex flex-wrap gap-2">
                           {lifecycle === 'new' && (
                             <>
-                              <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs">
+                              <Button asChild size="sm" className="!bg-blue-600 hover:!bg-blue-700 !text-white text-xs">
                                 <Link href="/student/internships">Browse Internships</Link>
                               </Button>
                               <Button asChild size="sm" variant="outline" className="text-xs">

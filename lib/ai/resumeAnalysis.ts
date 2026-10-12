@@ -89,7 +89,9 @@ export async function uploadAndAnalyzeResume(
   }
 
   // --------------------------------------------------
-  // 3. Extract text & run AI analysis
+  // 3. Run AI analysis
+  //    First try the proper PDF route (Gemini). If Gemini
+  //    is not configured (503) fall back to the text route.
   // --------------------------------------------------
 
   onProgress?.(20);
@@ -97,20 +99,68 @@ export async function uploadAndAnalyzeResume(
   let analysis: ResumeAnalysis;
 
   try {
-    analysis = await analyzeResume(file);
-  } catch (caught) {
-    console.error("Resume analysis execution failed:", caught);
-    throw new ResumeUploadError(
-      caught instanceof Error
-        ? caught.message
-        : "Resume analysis failed. Please try again."
-    );
+    // --- attempt 1: send raw PDF to /api/resume/analyze ---
+    const idToken = await user.getIdToken(true);
+    const formData = new FormData();
+    formData.append("resume", file);
+
+    onProgress?.(35);
+
+    const pdfResponse = await fetch("/api/resume/analyze", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${idToken}` },
+      body: formData,
+    });
+
+    if (pdfResponse.status === 503) {
+      // Gemini not configured — fall through to text-based fallback
+      throw new Error("GEMINI_NOT_CONFIGURED");
+    }
+
+    if (!pdfResponse.ok) {
+      const errData = await pdfResponse.json().catch(() => ({}));
+      throw new ResumeUploadError(
+        errData.error || `Resume analysis failed (HTTP ${pdfResponse.status})`
+      );
+    }
+
+    const pdfResult = await pdfResponse.json() as { analysis: ResumeAnalysis };
+    analysis = { ...pdfResult.analysis, status: pdfResult.analysis.status || "completed" };
+
+  } catch (primaryErr) {
+    if (
+      primaryErr instanceof ResumeUploadError ||
+      !(primaryErr instanceof Error && primaryErr.message === "GEMINI_NOT_CONFIGURED")
+    ) {
+      // Hard failure — re-throw, don't fall back
+      if (primaryErr instanceof ResumeUploadError) throw primaryErr;
+      throw new ResumeUploadError(
+        primaryErr instanceof Error
+          ? primaryErr.message
+          : "Resume analysis failed. Please try again."
+      );
+    }
+
+    // --- attempt 2: text-extraction fallback (no Gemini key) ---
+    console.warn("Gemini not configured, falling back to text-based resume analysis.");
+    try {
+      analysis = await analyzeResume(file);
+    } catch (fallbackErr) {
+      console.error("Fallback resume analysis failed:", fallbackErr);
+      throw new ResumeUploadError(
+        fallbackErr instanceof Error
+          ? fallbackErr.message
+          : "Resume analysis failed. Please try again."
+      );
+    }
   }
 
   onProgress?.(70);
 
   // --------------------------------------------------
   // 4. Save analysis & resume metadata to Firestore
+  //    (only needed for fallback path; PDF route already
+  //     saves via adminDb on the server)
   // --------------------------------------------------
 
   const resumeData = {

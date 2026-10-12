@@ -144,7 +144,7 @@ export default function HRDashboardPage() {
                   Get started by publishing your company&apos;s first internship posting to begin receiving candidate applications.
                 </p>
                 <div className="pt-2">
-                  <Button asChild size="sm" className="bg-purple-600 hover:bg-purple-700 text-white">
+                  <Button asChild size="sm" className="!bg-purple-600 !hover:bg-purple-700 !text-white">
                     <Link href="/hr/internships">
                       <Plus className="h-3.5 w-3.5 mr-1" /> Create Your First Internship
                     </Link>
@@ -283,9 +283,15 @@ export default function HRDashboardPage() {
                         <p className="text-xs text-slate-500">{cand.internshipTitle} · {cand.studentEmail}</p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <Badge variant="purple" className="text-xs font-semibold">
-                          <Sparkles className="h-3 w-3 mr-1 text-purple-600" /> {cand.matchScore || 85}% Match
-                        </Badge>
+                        {cand.matchScore !== undefined && cand.matchScore !== null ? (
+                          <Badge variant="purple" className="text-xs font-semibold">
+                            <Sparkles className="h-3 w-3 mr-1 text-purple-600" /> {Math.round(cand.matchScore)}% Match
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs font-normal text-slate-500 border-slate-200">
+                            Not analyzed
+                          </Badge>
+                        )}
                         <Button size="sm" variant="outline" asChild>
                           <Link href={`/hr/applicants/${cand.id}`}>Review Candidate</Link>
                         </Button>

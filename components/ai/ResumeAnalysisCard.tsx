@@ -153,13 +153,24 @@ export default function ResumeAnalysisCard({
           </div>
         </div>
 
-        <Badge
-          variant="default"
-          className="shrink-0 border-green-200 bg-green-50 text-green-700"
-        >
-          <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-          Analysis Completed
-        </Badge>
+        <div className="flex items-center gap-2 flex-wrap">
+          {analysis.overallScore !== undefined && (
+            <Badge
+              variant="outline"
+              className="shrink-0 border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-bold"
+            >
+              Resume Score: {analysis.overallScore}/100
+            </Badge>
+          )}
+
+          <Badge
+            variant="default"
+            className="shrink-0 border-green-200 bg-green-50 text-green-700"
+          >
+            <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+            Analysis Completed
+          </Badge>
+        </div>
       </CardHeader>
 
       {/* Content */}

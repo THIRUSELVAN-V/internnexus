@@ -159,6 +159,10 @@ export default function StudentResumePage() {
       return;
     }
 
+    // Clear previous analysis so UI shows a clean loading state
+    setAnalysis(null);
+    setResume(null);
+
     setState("uploading");
     setProgress(10);
     setMessage("Sending resume securely to the AI analysis service...");

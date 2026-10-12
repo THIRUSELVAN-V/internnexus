@@ -399,7 +399,7 @@ export interface ResumeAnalysis {
   domains?: string[];
   education: {
     degree: string;
-    institution: string;
+    institution?: string;
     field?: string;
     fieldOfStudy?: string;
     dates?: string;

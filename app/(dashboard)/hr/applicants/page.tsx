@@ -31,6 +31,7 @@ interface ApplicantRow {
   role: string;
   college: string;
   score?: number;
+  resumeScore?: number;
   status: Application["status"];
   appliedAt: string;
   application: Application;
@@ -125,6 +126,8 @@ export default function HRApplicantsPage() {
               }
             ).college || "";
 
+          let resumeScore: number | undefined;
+
           if (studentId) {
             try {
               const studentSnapshot = await getDoc(doc(db, "users", studentId));
@@ -144,6 +147,16 @@ export default function HRApplicantsPage() {
                   studentData.university ||
                   studentData.institution ||
                   college;
+
+                const rawResumeScore =
+                  studentData.resumeAnalysis?.overallScore ??
+                  studentData.resume?.analysis?.overallScore ??
+                  studentData.storedAnalysis?.overallScore;
+
+                if (rawResumeScore !== undefined && rawResumeScore !== null) {
+                  const numScore = Number(rawResumeScore);
+                  resumeScore = Number.isFinite(numScore) ? numScore : undefined;
+                }
               }
             } catch (studentError) {
               console.error(
@@ -206,6 +219,7 @@ export default function HRApplicantsPage() {
             role: internshipTitle || "Internship",
             college: college || "College not available",
             score,
+            resumeScore,
             status: data.status || "pending",
             appliedAt: appliedAtStr,
             application: {
@@ -459,6 +473,36 @@ export default function HRApplicantsPage() {
     },
 
     {
+      key: "resumeScore",
+      header: "Resume Score",
+      render: (item) => {
+        const rScore = item.resumeScore;
+
+        if (
+          rScore === undefined ||
+          rScore === null ||
+          !Number.isFinite(Number(rScore))
+        ) {
+          return <span className="text-xs text-slate-400">Not analyzed</span>;
+        }
+
+        const numeric = Math.round(Number(rScore));
+        const badgeColor =
+          numeric >= 80
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+            : numeric >= 65
+            ? "border-blue-200 bg-blue-50 text-blue-700"
+            : "border-amber-200 bg-amber-50 text-amber-700";
+
+        return (
+          <Badge variant="outline" className={`text-xs font-bold ${badgeColor}`}>
+            {numeric}/100
+          </Badge>
+        );
+      },
+    },
+
+    {
       key: "score",
       header: "AI Match Score",
       render: (item) => {
@@ -520,9 +564,12 @@ export default function HRApplicantsPage() {
           item.status === "hr_shortlisted";
 
         const canAssignMentor =
-          item.status === "hr_shortlisted" ||
+          item.status === "hr_shortlisted" && !item.application.mentorId;
+
+        const isMentorAssigned =
           item.status === "mentor_assigned" ||
-          item.status === "accepted";
+          item.status === "accepted" ||
+          Boolean(item.application.mentorId);
 
         return (
           <div className="flex items-center gap-2 flex-wrap">
@@ -591,7 +638,7 @@ export default function HRApplicantsPage() {
               </Button>
             )}
 
-            {/* Assign Mentor */}
+            {/* Assign Mentor — ONLY when shortlisted and not yet assigned */}
             {canAssignMentor && (
               <Button
                 style={{color:"white"}}
@@ -606,6 +653,14 @@ export default function HRApplicantsPage() {
                   Assign Mentor
                 </Link>
               </Button>
+            )}
+
+            {/* Mentor already assigned */}
+            {isMentorAssigned && (
+              <Badge variant="success" className="text-xs font-semibold gap-1 py-1 px-2.5">
+                <Check className="h-3.5 w-3.5" />
+                Mentor Assigned {item.application.mentorName ? `(${item.application.mentorName})` : ""}
+              </Badge>
             )}
           </div>
         );

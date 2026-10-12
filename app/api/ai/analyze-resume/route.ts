@@ -14,7 +14,6 @@ export async function POST(request: Request) {
     }
 
     const cleanText = resumeText.trim();
-    const lowerText = cleanText.toLowerCase();
 
     // Check environment API keys (supports GEMINI_API_KEY or GOOGLE_AI_API_KEY)
     const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
@@ -29,7 +28,7 @@ export async function POST(request: Request) {
         analysisResult = parseResumeTextIntelligently(cleanText);
       }
     } else {
-      // Intelligent rule-based parsing engine extracting actual skills & entities
+      // Rule-based parsing engine — only extracts what is genuinely found
       analysisResult = parseResumeTextIntelligently(cleanText);
     }
 
@@ -92,7 +91,7 @@ ${text.slice(0, 4000)}
     status: 'completed',
     skills: parsed.skills || [],
     technicalSkills: parsed.skills || [],
-    softSkills: ['Problem Solving', 'Teamwork', 'Communication'],
+    softSkills: [],
     programmingLanguages: parsed.programmingLanguages || [],
     frameworks: parsed.frameworks || [],
     technologies: parsed.technologies || [],
@@ -102,16 +101,17 @@ ${text.slice(0, 4000)}
     certifications: parsed.certifications || [],
     projects: parsed.projects || [],
     experience: parsed.experience || [],
-    overallScore: parsed.overallScore || 85,
+    overallScore: parsed.overallScore || 70,
     summary: parsed.summary || 'Extracted resume profile.',
-    strengths: ['Relevant technical background', 'Extracted project portfolio'],
-    improvements: ['Could detail more system metrics'],
+    strengths: [],
+    improvements: [],
     analyzedAt: new Date().toISOString(),
   };
 }
 
 /**
- * Intelligent rule-based parser that scans the actual text content of the resume
+ * Rule-based parser that scans the actual text content of the resume.
+ * Only returns data genuinely found in the text — no fabricated generic entries.
  */
 function parseResumeTextIntelligently(text: string): ResumeAnalysis {
   const textLower = text.toLowerCase();
@@ -130,98 +130,40 @@ function parseResumeTextIntelligently(text: string): ResumeAnalysis {
   const foundDomains = DOMAIN_DICT.filter((d) => textLower.includes(d)).map(capitalize);
 
   const allSkills = Array.from(new Set([...foundLangs, ...foundFrameworks, ...foundTechs, ...foundTools]));
-  if (allSkills.length === 0) {
-    allSkills.push('Software Engineering', 'Problem Solving', 'Git', 'Web Basics');
-  }
 
-  if (foundDomains.length === 0) {
-    foundDomains.push('Software Development', 'Web Engineering');
-  }
-
-  // Detect education
+  // Detect degree — only populate what can actually be inferred from the text
   const educationList: ResumeAnalysis['education'] = [];
-  if (textLower.includes('bachelor') || textLower.includes('b.tech') || textLower.includes('b.e.') || textLower.includes('degree') || textLower.includes('university') || textLower.includes('college')) {
+  if (
+    textLower.includes('bachelor') || textLower.includes('b.tech') ||
+    textLower.includes('b.e') || textLower.includes('degree') ||
+    textLower.includes('university') || textLower.includes('college')
+  ) {
     let degreeName = 'Bachelor of Technology';
-    if (textLower.includes('b.e') || textLower.includes('bachelor of engineering')) degreeName = 'Bachelor of Engineering';
+    if (textLower.includes('bachelor of engineering')) degreeName = 'Bachelor of Engineering';
     if (textLower.includes('b.sc') || textLower.includes('bachelor of science')) degreeName = 'Bachelor of Science';
-
-    let instName = 'University Institute of Technology';
-    if (textLower.includes('iit')) instName = 'Indian Institute of Technology';
-    else if (textLower.includes('bits')) instName = 'BITS Pilani';
-    else if (textLower.includes('nit')) instName = 'National Institute of Technology';
-
-    educationList.push({
-      degree: degreeName,
-      institution: instName,
-      year: 2026,
-      gpa: 8.5,
-    });
-  } else {
-    educationList.push({
-      degree: 'Computer Science & Engineering',
-      institution: 'State Technical University',
-      year: 2026,
-      gpa: 8.2,
-    });
+    if (textLower.includes('m.tech') || textLower.includes('master')) degreeName = 'Master of Technology';
+    educationList.push({ degree: degreeName });
   }
 
-  // Detect certifications
+  // Certifications — only include ones explicitly mentioned in the text
   const certs: string[] = [];
-  if (textLower.includes('aws') || textLower.includes('cloud')) certs.push('AWS Certified Developer / Cloud Practitioner');
-  if (textLower.includes('meta') || textLower.includes('react')) certs.push('Meta Front-End Developer Professional Certificate');
-  if (textLower.includes('google') || textLower.includes('tensorflow') || textLower.includes('python')) certs.push('Google Data Analytics & Python Certificate');
-  if (certs.length === 0) certs.push('Certified Web Application Developer');
+  if (textLower.includes('aws certified')) certs.push('AWS Certified');
+  if (textLower.includes('google certified') || textLower.includes('google professional')) certs.push('Google Certified Professional');
+  if (textLower.includes('microsoft certified')) certs.push('Microsoft Certified');
+  if (textLower.includes('oracle certified')) certs.push('Oracle Certified');
 
-  // Detect project mentions
-  const projectsList: ResumeAnalysis['projects'] = [];
-  if (textLower.includes('e-commerce') || textLower.includes('ecommerce') || textLower.includes('store') || textLower.includes('cart')) {
-    projectsList.push({
-      name: 'Full-Stack E-Commerce Portal',
-      description: 'Web application featuring user auth, cart drawer, payment gateway, and product catalog.',
-      technologies: foundSkills(foundFrameworks, ['React', 'Node.js', 'MongoDB']),
-    });
-  }
-
-  if (textLower.includes('chat') || textLower.includes('messaging') || textLower.includes('socket')) {
-    projectsList.push({
-      name: 'Real-Time Collaborative Platform',
-      description: 'Instant messaging & team collaboration app built with real-time socket connections.',
-      technologies: foundSkills(foundTechs, ['Node.js', 'Socket.io', 'Redis']),
-    });
-  }
-
-  if (textLower.includes('machine learning') || textLower.includes('ai') || textLower.includes('predict')) {
-    projectsList.push({
-      name: 'Predictive Data Analytics Pipeline',
-      description: 'AI model training pipeline for automated candidate scoring and data classification.',
-      technologies: ['Python', 'TensorFlow', 'REST API'],
-    });
-  }
-
-  if (projectsList.length === 0) {
-    projectsList.push({
-      name: 'Personal Web Application & Portfolio',
-      description: 'Responsive web application built with modern component architecture and API integration.',
-      technologies: foundLangs.slice(0, 3).length > 0 ? foundLangs.slice(0, 3) : ['JavaScript', 'HTML', 'CSS'],
-    });
-  }
-
-  // Experience
+  // Projects & experience: rule-based extraction cannot reliably identify
+  // company names or project titles without NLP — return empty to avoid fabrication.
   const expList: ResumeAnalysis['experience'] = [];
-  if (textLower.includes('intern') || textLower.includes('developer') || textLower.includes('experience')) {
-    expList.push({
-      title: 'Software Developer Intern',
-      company: 'Tech Solutions Inc.',
-      duration: 'Summer Internship (3 months)',
-      description: 'Collaborated on frontend UI components and backend REST API endpoints.',
-    });
-  }
+  const projectsList: ResumeAnalysis['projects'] = [];
+
+  const scoreBase = 50 + allSkills.length * 3;
 
   return {
     status: 'completed',
     skills: allSkills,
     technicalSkills: allSkills,
-    softSkills: ['Problem Solving', 'Teamwork', 'Communication', 'Adaptability'],
+    softSkills: [],
     programmingLanguages: foundLangs,
     frameworks: foundFrameworks,
     technologies: foundTechs,
@@ -231,10 +173,14 @@ function parseResumeTextIntelligently(text: string): ResumeAnalysis {
     certifications: certs,
     projects: projectsList,
     experience: expList,
-    overallScore: Math.min(95, Math.max(70, 65 + allSkills.length * 3)),
-    summary: `Candidate profile extracted with ${allSkills.length} key technical skills across ${foundDomains.join(', ')}.`,
-    strengths: [`Strong practical skills in ${allSkills.slice(0, 3).join(', ')}`, 'Demonstrated project building experience'],
-    improvements: ['Add quantifiable impact metrics to project descriptions'],
+    overallScore: Math.min(95, Math.max(40, scoreBase)),
+    summary: allSkills.length > 0
+      ? `Candidate profile with ${allSkills.length} detected technical skills: ${allSkills.slice(0, 5).join(', ')}.`
+      : 'Resume text could not be fully parsed. Ensure the PDF contains selectable text (not a scanned image).',
+    strengths: allSkills.length > 0
+      ? [`Technical skills detected: ${allSkills.slice(0, 3).join(', ')}`]
+      : [],
+    improvements: ['Configure GEMINI_API_KEY for full AI-powered resume extraction'],
     analyzedAt: new Date().toISOString(),
   };
 }
@@ -258,8 +204,4 @@ function capitalize(str: string): string {
   if (str === 'jwt') return 'JWT';
   if (str === 'ui/ux design') return 'UI/UX Design';
   return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-function foundSkills(found: string[], fallback: string[]): string[] {
-  return found.length > 0 ? found : fallback;
 }

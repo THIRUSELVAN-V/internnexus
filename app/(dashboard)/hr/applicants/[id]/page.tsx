@@ -17,12 +17,24 @@ import {
   Loader2,
   Sparkles,
   AlertCircle,
+  Check,
+  X,
 } from "lucide-react";
 
 import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase/config";
 
-import { doc, getDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 
+import { createNotification } from "@/lib/firebase/notifications";
+import { matchCandidateWithInternship } from "@/lib/ai/candidateMatch";
 import type {
   Application,
   CandidateMatch,
@@ -44,6 +56,7 @@ export default function HRApplicantDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const db = getFirebaseDb();
   const [applicationId, setApplicationId] = useState<string | null>(null);
 
   const [data, setData] = useState<ApplicantData | null>(null);
@@ -53,6 +66,10 @@ export default function HRApplicantDetailPage({
   const [error, setError] = useState("");
 
   const [unauthorized, setUnauthorized] = useState(false);
+
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeSuccess, setAnalyzeSuccess] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // ---------------------------------------------------------
   // Get application ID from route
@@ -199,6 +216,10 @@ export default function HRApplicantDetailPage({
 
             if (studentData.resumeAnalysis) {
               resumeAnalysis = studentData.resumeAnalysis as ResumeAnalysis;
+            } else if (studentData.resume?.analysis) {
+              resumeAnalysis = studentData.resume.analysis as ResumeAnalysis;
+            } else if (studentData.storedAnalysis) {
+              resumeAnalysis = studentData.storedAnalysis as ResumeAnalysis;
             }
           }
         }
@@ -256,6 +277,165 @@ export default function HRApplicantDetailPage({
 
     loadApplicant();
   }, [applicationId]);
+
+  const handleShortlist = async () => {
+    if (!data?.application) return;
+    try {
+      setIsUpdating(true);
+      setError("");
+
+      const appId = data.application.id;
+      await updateDoc(doc(db, "applications", appId), {
+        status: "hr_shortlisted",
+        updatedAt: new Date().toISOString(),
+      });
+
+      if (data.application.studentId) {
+        const companyName = data.application.companyName || "the company";
+        const internshipTitle = data.application.internshipTitle || "Internship";
+        createNotification({
+          recipientUserId: data.application.studentId,
+          recipientRole: "student",
+          title: "Application Shortlisted",
+          message: `Your application for ${internshipTitle} at ${companyName} has been shortlisted.`,
+          type: "success",
+          category: "application",
+          link: "/student/applications",
+          relatedId: appId,
+          relatedType: "application",
+        }).catch((notifyErr) => console.error("Failed to notify shortlisted student:", notifyErr));
+      }
+
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              application: {
+                ...prev.application,
+                status: "hr_shortlisted",
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : null
+      );
+
+      // Check internship openings
+      if (data.application.internshipId) {
+        const internshipId = data.application.internshipId;
+        const internshipSnapshot = await getDoc(doc(db, "internships", internshipId));
+        if (internshipSnapshot.exists()) {
+          const internshipData = internshipSnapshot.data();
+          const openings = Number(internshipData.openings) || 1;
+          const applicationsRef = collection(db, "applications");
+          const q = query(
+            applicationsRef,
+            where("internshipId", "==", internshipId),
+            where("status", "in", ["hr_shortlisted", "mentor_assigned", "accepted"])
+          );
+          const shortlistedSnapshot = await getDocs(q);
+          if (shortlistedSnapshot.size >= openings && internshipData.status !== "closed") {
+            await updateDoc(doc(db, "internships", internshipId), {
+              status: "closed",
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      setAnalyzeSuccess("Candidate shortlisted successfully.");
+      setTimeout(() => setAnalyzeSuccess(null), 4000);
+    } catch (err) {
+      console.error("Error shortlisting applicant:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to shortlist applicant."
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!data?.application) return;
+    try {
+      setIsUpdating(true);
+      setError("");
+
+      const appId = data.application.id;
+      await updateDoc(doc(db, "applications", appId), {
+        status: "rejected",
+        updatedAt: new Date().toISOString(),
+      });
+
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              application: {
+                ...prev.application,
+                status: "rejected",
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : null
+      );
+
+      setAnalyzeSuccess("Candidate application rejected.");
+      setTimeout(() => setAnalyzeSuccess(null), 4000);
+    } catch (err) {
+      console.error("Error rejecting applicant:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to reject applicant."
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRunMatch = async () => {
+    if (!data?.application) return;
+    try {
+      setIsAnalyzing(true);
+      setError("");
+      setAnalyzeSuccess(null);
+
+      const app = data.application;
+      const result = await matchCandidateWithInternship(
+        [],
+        [],
+        app.id,
+        app.internshipId,
+        app.studentId
+      );
+
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              candidateMatch: result,
+              application: {
+                ...prev.application,
+                candidateMatch: result,
+                matchScore: Number(result.matchScore),
+                matchedSkills: result.matchedSkills,
+                missingSkills: result.missingSkills,
+                matchReasoning: result.reasoning,
+              },
+            }
+          : null
+      );
+      setAnalyzeSuccess(`Candidate match calculated successfully: ${result.matchScore}%`);
+      setTimeout(() => setAnalyzeSuccess(null), 5000);
+    } catch (err) {
+      console.error("AI candidate matching failed:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "AI candidate matching failed. Please try again."
+      );
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   // ---------------------------------------------------------
   // Loading
@@ -340,32 +520,105 @@ export default function HRApplicantDetailPage({
           </Link>
         </Button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Analyze / Re-analyze AI button */}
           <Button
-            variant="outline"
             size="sm"
-            disabled
-            title="Resume download will be connected when resume file storage is available."
+            onClick={handleRunMatch}
+            disabled={isAnalyzing || isUpdating}
+            className="!bg-purple-600 !hover:bg-purple-700 !text-white text-xs font-semibold gap-1.5"
           >
-            <Download className="mr-1 h-3.5 w-3.5" />
-            Download Resume PDF
+            {isAnalyzing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {candidateMatch ? "Re-analyze Match" : "Analyze AI Match"}
           </Button>
 
-          <Button
-            
-            size="sm"
-            className="bg-purple-600 hover:bg-purple-700 text-white"
-            asChild
-          >
-            <Link
-              href={`/hr/mentor-recommendation?applicationId=${application.id}`}
-            >
-              <UserCheck className="mr-1 h-3.5 w-3.5" />
-              Assign Mentor
-            </Link>
-          </Button>
+          {/* Condition 1: If candidate is not shortlisted (pending or ai_reviewed) -> Show Shortlist or Reject */}
+          {(application.status === "pending" || application.status === "ai_reviewed") && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReject}
+                disabled={isUpdating || isAnalyzing}
+                className="border-red-200 text-red-600 hover:bg-red-50 text-xs"
+              >
+                {isUpdating ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <X className="h-3.5 w-3.5 mr-1" />
+                )}
+                Reject
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={handleShortlist}
+                disabled={isUpdating || isAnalyzing}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+              >
+                {isUpdating ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Check className="h-3.5 w-3.5 mr-1" />
+                )}
+                Shortlist
+              </Button>
+            </>
+          )}
+
+          {/* Condition 2: If shortlisted AND mentor NOT yet assigned -> Show Assign Mentor option */}
+          {application.status === "hr_shortlisted" && !application.mentorId && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReject}
+                disabled={isUpdating || isAnalyzing}
+                className="border-red-200 text-red-600 hover:bg-red-50 text-xs"
+              >
+                {isUpdating ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <X className="h-3.5 w-3.5 mr-1" />
+                )}
+                Reject
+              </Button>
+
+              <Button
+                size="sm"
+                className="!bg-purple-600 !hover:bg-purple-700 !text-white text-xs font-semibold"
+                asChild
+              >
+                <Link
+                  href={`/hr/mentor-recommendation?applicationId=${application.id}`}
+                >
+                  <UserCheck className="mr-1 h-3.5 w-3.5" />
+                  Assign Mentor
+                </Link>
+              </Button>
+            </>
+          )}
+
+          {/* Condition 3: Mentor already assigned (mentor_assigned / accepted) -> Show assigned mentor badge, leave action buttons empty */}
+          {(application.status === "mentor_assigned" || application.status === "accepted" || !!application.mentorId) && (
+            <Badge variant="success" className="text-xs font-semibold gap-1 py-1 px-2.5">
+              <Check className="h-3.5 w-3.5" />
+              Mentor Assigned {application.mentorName ? `(${application.mentorName})` : ""}
+            </Badge>
+          )}
         </div>
       </div>
+
+      {analyzeSuccess && (
+        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 flex items-center gap-2 animate-in fade-in">
+          <Sparkles className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span>{analyzeSuccess}</span>
+        </div>
+      )}
 
       {/* Candidate Overview */}
 
@@ -373,7 +626,7 @@ export default function HRApplicantDetailPage({
         <CardContent className="p-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-lg font-bold text-slate-900">
                   {application.studentName ||
                     (student?.name as string) ||
@@ -384,6 +637,12 @@ export default function HRApplicantDetailPage({
                 <Badge variant="purple" className="text-xs capitalize">
                   {(application.status || "pending").replace("_", " ")}
                 </Badge>
+
+                {resumeAnalysis?.overallScore !== undefined && (
+                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-bold">
+                    Resume Score: {resumeAnalysis.overallScore}/100
+                  </Badge>
+                )}
               </div>
 
               <p className="text-xs text-slate-500 mt-0.5">
@@ -512,19 +771,29 @@ export default function HRApplicantDetailPage({
             recommendation={candidateMatch.recommendation}
           />
         ) : (
-          <Card>
+          <Card className="border-dashed border-slate-200">
             <CardHeader>
               <CardTitle>AI Candidate Match</CardTitle>
             </CardHeader>
 
-            <CardContent>
+            <CardContent className="space-y-3">
               <p className="text-sm text-slate-500">
                 Candidate matching has not been performed yet.
               </p>
 
-              <p className="mt-2 text-xs text-slate-400">
-                Return to Applicants Management and click "Analyze AI".
-              </p>
+              <Button
+                size="sm"
+                onClick={handleRunMatch}
+                disabled={isAnalyzing}
+                className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold gap-1.5"
+              >
+                {isAnalyzing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                Run AI Matching Now
+              </Button>
             </CardContent>
           </Card>
         )}
