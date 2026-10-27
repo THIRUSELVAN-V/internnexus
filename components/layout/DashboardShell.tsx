@@ -14,7 +14,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  if (loading) {
+  React.useEffect(() => {
+    if (!loading && !profile) {
+      router.push('/login');
+    }
+  }, [loading, profile, router]);
+
+  if (loading || !profile) {
     return (
       <div className="flex h-screen bg-slate-50">
         {/* Sidebar skeleton */}
@@ -39,11 +45,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </div>
     );
-  }
-
-  if (!profile) {
-    router.push('/login');
-    return null;
   }
 
   return (

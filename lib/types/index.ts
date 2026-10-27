@@ -34,15 +34,25 @@ export interface UserProfile {
   updatedAt: string;
 }
 
+export interface ResumeMetadata {
+  fileName: string;
+  contentType: "application/pdf";
+  size: number;
+}
 export interface StudentProfile extends UserProfile {
-  role: 'student';
+  role: "student";
   university?: string;
   degree?: string;
   graduationYear?: number;
   skills?: string[];
   gpa?: number;
+
   resumeURL?: string;
+  resume?: ResumeMetadata;
   resumeAnalysis?: ResumeAnalysis;
+  resumeAnalyzed?: boolean;
+  resumeAnalyzedAt?: string;
+
   linkedinURL?: string;
   githubURL?: string;
   portfolioURL?: string;
@@ -58,6 +68,8 @@ export interface HRProfile extends UserProfile {
   companyName?: string;
   designation?: string;
   department?: string;
+  approvalStatus?: CompanyStatus;
+  rejectionReason?: string;
 }
 
 export interface MentorProfile extends UserProfile {
@@ -66,11 +78,31 @@ export interface MentorProfile extends UserProfile {
   companyName?: string;
   designation?: string;
   expertise?: string[];
+  skills?: string[];
   yearsOfExperience?: number;
+  experience?: string | number;
   currentWorkload?: number; // number of active mentees
   maxMentees?: number;
   bio?: string;
   linkedinURL?: string;
+}
+
+export interface AuthorizedMentor {
+  id: string;
+  name: string;
+  email: string;
+  companyId: string;
+  companyName?: string;
+  addedByHR: string;
+  addedByHRName?: string;
+  createdAt: string;
+  registered: boolean;
+  registeredAt?: string;
+  mentorUserId?: string;
+  phone?: string;
+  designation?: string;
+  experience?: string | number;
+  expertise?: string[];
 }
 
 export interface AdminProfile extends UserProfile {
@@ -80,6 +112,14 @@ export interface AdminProfile extends UserProfile {
 
 // ─── Company ────────────────────────────────────────────────────────────────
 
+export interface CompanyAddress {
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  pincode: string;
+}
+
 export interface Company {
   id: string;
   name: string;
@@ -88,10 +128,22 @@ export interface Company {
   website?: string;
   logoURL?: string;
   location: string;
+  companyAddress?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  pincode?: string;
+  officialEmail?: string;
+  contactNumber?: string;
+  registrationNumber?: string; // GST / Udyam / Company Reg No
   size: 'startup' | 'small' | 'medium' | 'large' | 'enterprise';
   status: CompanyStatus;
   hrId: string;
+  hrIds?: string[];
   hrName: string;
+  hrEmail?: string;
+  hrPhone?: string;
+  rejectionReason?: string;
   approvedBy?: string;
   approvedAt?: string;
   createdAt: string;
@@ -131,26 +183,42 @@ export interface Internship {
 
 export interface Application {
   id: string;
+
   internshipId: string;
   internshipTitle: string;
+
   companyId: string;
   companyName: string;
+
   studentId: string;
   studentName: string;
   studentEmail: string;
+
   resumeURL: string;
   coverLetter?: string;
+
   status: ApplicationStatus;
+
+  // Existing resume AI analysis
   aiAnalysis?: ResumeAnalysis;
+
+  // AI candidate-internship matching result
+  candidateMatch?: CandidateMatch;
+
+  // Existing matching fields
   matchScore?: number;
   matchedSkills?: string[];
   missingSkills?: string[];
   matchReasoning?: string;
+
   hrNotes?: string;
+
   appliedAt: string;
   updatedAt: string;
+
   mentorId?: string;
   mentorName?: string;
+  mentorRecommendations?: MentorRecommendation[];
 }
 
 // ─── Mentor Assignment ────────────────────────────────────────────────────────
@@ -187,11 +255,48 @@ export interface Task {
   dueDate: string;
   status: TaskStatus;
   aiGenerated: boolean;
+  projectId?: string;
+  stepIndex?: number;
   resources?: string[];
   tags?: string[];
   createdAt: string;
   updatedAt: string;
   submissionId?: string;
+}
+
+// ─── Project ──────────────────────────────────────────────────────────────────
+
+export interface ProjectTaskRoadmap {
+  stepIndex: number;
+  title: string;
+  description: string;
+  instructions: string;
+  estimatedHours: number;
+  resources: string[];
+  tags: string[];
+  priority?: 'HIGH' | 'MEDIUM' | 'LOW';
+  suggestedMenteeId?: string;
+  suggestedMenteeName?: string;
+  matchReasoning?: string;
+  dependencies?: string[];
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  domain: string;
+  description: string;
+  mentorId: string;
+  mentorName: string;
+  companyId?: string;
+  companyName?: string;
+  assignedMenteeIds: string[];
+  assignedMenteeNames: string[];
+  status: 'planning' | 'active' | 'completed';
+  aiRoadmap?: ProjectTaskRoadmap[];
+  currentStepIndex?: Record<string, number>; // studentId -> current unlocked step index
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── Submission ───────────────────────────────────────────────────────────────
@@ -207,6 +312,7 @@ export interface Submission {
   fileURLs: string[];
   fileTypes: string[];
   description?: string;
+  submissionLink?: string;
   status: TaskStatus;
   aiAnalysis?: SubmissionAnalysis;
   mentorFeedback?: string;
@@ -265,24 +371,38 @@ export interface Certificate {
 export interface Notification {
   id: string;
   userId: string;
+  recipientUserId?: string;
+  recipientRole?: UserRole;
   title: string;
   message: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  category: 'application' | 'task' | 'feedback' | 'assignment' | 'certificate' | 'system';
+  type?: 'info' | 'success' | 'warning' | 'error' | string;
+  category?: 'application' | 'task' | 'feedback' | 'assignment' | 'certificate' | 'system' | string;
   read: boolean;
   link?: string;
+  relatedId?: string;
+  relatedType?: string;
   createdAt: string;
 }
 
 // ─── AI Analysis ──────────────────────────────────────────────────────────────
 
 export interface ResumeAnalysis {
+  status: "processing" | "completed" | "failed";
   skills: string[];
   technicalSkills: string[];
   softSkills: string[];
+  programmingLanguages?: string[];
+  frameworks?: string[];
+  databases?: string[];
+  technologies?: string[];
+  tools?: string[];
+  domains?: string[];
   education: {
     degree: string;
-    institution: string;
+    institution?: string;
+    field?: string;
+    fieldOfStudy?: string;
+    dates?: string;
     year?: number;
     gpa?: number;
   }[];
@@ -291,6 +411,18 @@ export interface ResumeAnalysis {
     company: string;
     duration: string;
     description: string;
+  }[];
+  workExperience?: {
+    title: string;
+    company: string;
+    duration?: string;
+    description?: string;
+  }[];
+  internships?: {
+    title: string;
+    company: string;
+    duration?: string;
+    description?: string;
   }[];
   projects: {
     name: string;
@@ -304,6 +436,9 @@ export interface ResumeAnalysis {
   strengths: string[];
   improvements: string[];
   analyzedAt: string;
+  fileName?: string;
+  error?: string;
+  failedAt?: any;
 }
 
 export interface CandidateMatch {
