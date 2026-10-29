@@ -351,7 +351,7 @@ export default function StudentDashboardPage() {
                     <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
                       {nextTask.description}
                     </p>
-                    <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold" size="sm">
+                    <Button asChild className="w-full !bg-blue-600 !hover:bg-blue-700 !text-white font-semibold" size="sm">
                       <Link href="/student/tasks">Submit Deliverables <ArrowRight className="h-3.5 w-3.5 ml-1" /></Link>
                     </Button>
                   </CardContent>

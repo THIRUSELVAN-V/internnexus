@@ -57,8 +57,15 @@ export default function MentorProjectDetailPage({ params }: PageProps) {
     try {
       const doc = await getDocument<Project>('projects', projectId);
       if (doc) {
-        // Strip legacy static default phases if present so dynamic AI tasks take precedence
-        if (doc.aiRoadmap && doc.aiRoadmap.some((p) => p.title?.includes('Phase 1: Project Architecture'))) {
+        // Strip legacy static default mock phases if present so dynamic AI tasks take precedence
+        if (
+          doc.aiRoadmap &&
+          doc.aiRoadmap.some(
+            (p) =>
+              p.title?.includes('Phase 1: Project Architecture') ||
+              p.title?.includes('Student Registration & Profile Management')
+          )
+        ) {
           doc.aiRoadmap = undefined;
         }
         setProject(doc);

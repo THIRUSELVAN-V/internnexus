@@ -112,45 +112,27 @@ export async function uploadAndAnalyzeResume(
       body: formData,
     });
 
-    if (pdfResponse.status === 503) {
-      // Gemini not configured — fall through to text-based fallback
-      throw new Error("GEMINI_NOT_CONFIGURED");
-    }
-
-    if (!pdfResponse.ok) {
+    if (pdfResponse.ok) {
+      const pdfResult = await pdfResponse.json() as { analysis: ResumeAnalysis };
+      analysis = { ...pdfResult.analysis, status: pdfResult.analysis.status || "completed" };
+    } else {
       const errData = await pdfResponse.json().catch(() => ({}));
-      throw new ResumeUploadError(
-        errData.error || `Resume analysis failed (HTTP ${pdfResponse.status})`
-      );
+      console.warn(`PDF resume analysis returned ${pdfResponse.status}:`, errData.error);
+      // Fall through to text-based extraction fallback
+      onProgress?.(50);
+      analysis = await analyzeResume(file);
     }
-
-    const pdfResult = await pdfResponse.json() as { analysis: ResumeAnalysis };
-    analysis = { ...pdfResult.analysis, status: pdfResult.analysis.status || "completed" };
-
   } catch (primaryErr) {
-    if (
-      primaryErr instanceof ResumeUploadError ||
-      !(primaryErr instanceof Error && primaryErr.message === "GEMINI_NOT_CONFIGURED")
-    ) {
-      // Hard failure — re-throw, don't fall back
-      if (primaryErr instanceof ResumeUploadError) throw primaryErr;
-      throw new ResumeUploadError(
-        primaryErr instanceof Error
-          ? primaryErr.message
-          : "Resume analysis failed. Please try again."
-      );
-    }
-
-    // --- attempt 2: text-extraction fallback (no Gemini key) ---
-    console.warn("Gemini not configured, falling back to text-based resume analysis.");
+    console.warn("Primary PDF resume analysis error, falling back to text-based analysis:", primaryErr);
     try {
+      onProgress?.(50);
       analysis = await analyzeResume(file);
     } catch (fallbackErr) {
-      console.error("Fallback resume analysis failed:", fallbackErr);
+      console.error("Both PDF and text-based resume analysis failed:", fallbackErr);
       throw new ResumeUploadError(
         fallbackErr instanceof Error
           ? fallbackErr.message
-          : "Resume analysis failed. Please try again."
+          : "Resume analysis failed. Please ensure the document contains readable text and try again."
       );
     }
   }

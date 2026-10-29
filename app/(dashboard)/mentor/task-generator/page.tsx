@@ -5,6 +5,7 @@ import TaskGeneratorCard from '@/components/ai/TaskGeneratorCard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { generateWeeklyTasks } from '@/lib/ai/taskGenerator';
 import type { TaskSuggestion, MentorAssignment, Task } from '@/lib/types';
 import { Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
@@ -15,6 +16,7 @@ export default function MentorTaskGeneratorPage() {
   const { profile } = useAuthContext();
   const [week, setWeek] = useState<number>(3);
   const [domain, setDomain] = useState<string>('Web Development');
+  const [taskDescription, setTaskDescription] = useState<string>('');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
 
   const [mentees, setMentees] = useState<MentorAssignment[]>([]);
@@ -42,7 +44,8 @@ export default function MentorTaskGeneratorPage() {
     setGenerating(true);
     setPublished(false);
     try {
-      const res = await generateWeeklyTasks(domain, week);
+      const selectedMentee = mentees.find((m) => m.studentId === selectedStudentId);
+      const res = await generateWeeklyTasks(domain, week, taskDescription, selectedMentee?.studentName);
       setSuggestion(res);
     } catch (err) {
       console.error('Error generating task:', err);
@@ -138,6 +141,22 @@ export default function MentorTaskGeneratorPage() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">
+              Project Description / Specific Task Objectives (Optional)
+            </label>
+            <Textarea
+              value={taskDescription}
+              onChange={(e) => setTaskDescription(e.target.value)}
+              placeholder="e.g. Build an authenticated WebSocket chat interface with MongoDB persistence and message reactions..."
+              rows={3}
+              className="text-xs"
+            />
+            <p className="text-[11px] text-slate-500 mt-1 italic">
+              AI reads this description and the student's profile to generate a tailored task deliverable.
+            </p>
           </div>
 
           <Button onClick={handleGenerate} disabled={generating} className="bg-green-600 hover:bg-green-700 text-white font-semibold">

@@ -104,18 +104,23 @@ export async function POST(request: Request) {
     const profileSnapshot = await userRef.get();
 
     if (!profileSnapshot.exists) {
-      return errorResponse("Student profile not found.", 404);
-    }
-
-    const profileData = profileSnapshot.data();
-
-    if (profileData?.role !== "student") {
-      return errorResponse("Only student accounts can analyze resumes.", 403);
+      await userRef.set(
+        {
+          uid,
+          role: "student",
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } else {
+      const profileData = profileSnapshot.data();
+      if (profileData?.role && profileData.role !== "student" && profileData.role !== "admin") {
+        return errorResponse("Only student accounts can analyze resumes.", 403);
+      }
     }
   } catch (caught) {
-    console.error("Firestore profile lookup failed:", caught);
-
-    return errorResponse("Unable to verify your student profile.", 500);
+    console.warn("Firestore profile lookup warning (continuing analysis):", caught);
   }
 
   // --------------------------------------------------

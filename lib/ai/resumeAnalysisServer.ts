@@ -6,9 +6,7 @@ import {
   type ExtractedResumeAnalysis,
 } from "./resumeAnalysisSchema";
 
-const GEMINI_MODEL = "gemini-1.5-flash";
-
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_MODELS = ["gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"];
 
 const INSTRUCTION = `
 You are an AI resume analysis assistant for an internship management platform.
@@ -43,7 +41,7 @@ export async function analyzeResumePdf(
   // 1. Check Gemini API key
   // --------------------------------------------------
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
 
   if (!apiKey) {
     console.error("GEMINI_API_KEY is missing.");
@@ -77,101 +75,77 @@ export async function analyzeResumePdf(
 
   try {
     // ------------------------------------------------
-    // 5. Call Gemini
+    // 5. Call Gemini with multi-model fallback
     // ------------------------------------------------
 
-    const response = await fetch(GEMINI_URL, {
-      method: "POST",
+    let lastError: Error | null = null;
+    let response: Response | null = null;
 
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-
-      signal: controller.signal,
-
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [
-            {
-              text: INSTRUCTION,
+    for (const model of GEMINI_MODELS) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: INSTRUCTION }],
             },
-          ],
-        },
-
-        contents: [
-          {
-            role: "user",
-
-            parts: [
+            contents: [
               {
-                text: "Extract the structured resume information from this PDF.",
-              },
-
-              {
-                inlineData: {
-                  mimeType: "application/pdf",
-                  data: base64Pdf,
-                },
+                role: "user",
+                parts: [
+                  {
+                    text: "Extract the structured resume information from this PDF.",
+                  },
+                  {
+                    inlineData: {
+                      mimeType: "application/pdf",
+                      data: base64Pdf,
+                    },
+                  },
+                ],
               },
             ],
-          },
-        ],
+            generationConfig: {
+              temperature: 0,
+              responseMimeType: "application/json",
+              responseJsonSchema: geminiResumeSchema,
+            },
+          }),
+        });
 
-        generationConfig: {
-          temperature: 0,
+        if (res.ok) {
+          response = res;
+          break;
+        }
 
-          responseMimeType: "application/json",
+        const detail = await res.text();
+        console.warn(`Gemini model ${model} failed (${res.status}): ${detail.slice(0, 200)}`);
 
-          responseJsonSchema: geminiResumeSchema,
-        },
-      }),
-    });
+        // If client auth issue, don't retry other models with same key
+        if (res.status === 401 || res.status === 403) {
+          throw new ResumeAnalysisError(
+            "The AI service authentication failed. Please check the Gemini API key.",
+            502
+          );
+        }
 
-    // ------------------------------------------------
-    // 6. Handle Gemini errors
-    // ------------------------------------------------
-
-    if (!response.ok) {
-      const detail = await response.text();
-
-      console.error(
-        "Gemini resume analysis failed:",
-        response.status,
-        detail.slice(0, 1000),
-      );
-
-      if (response.status === 400) {
-        throw new ResumeAnalysisError(
-          "The resume could not be processed by the AI service.",
-          400,
-        );
+        lastError = new Error(`Model ${model} returned HTTP ${res.status}`);
+      } catch (err) {
+        if (err instanceof ResumeAnalysisError) throw err;
+        lastError = err as Error;
       }
+    }
 
-      if (response.status === 401 || response.status === 403) {
-        throw new ResumeAnalysisError(
-          "The AI service authentication failed. Please check the Gemini API key.",
-          502,
-        );
-      }
-
-      if (response.status === 429) {
-        throw new ResumeAnalysisError(
-          "The AI service is busy. Please try again shortly.",
-          429,
-        );
-      }
-
-      if (response.status >= 500) {
-        throw new ResumeAnalysisError(
-          "The AI service is temporarily unavailable. Please try again.",
-          502,
-        );
-      }
-
-      throw new ResumeAnalysisError(
-        "The AI service could not analyze this resume.",
-        502,
+    if (!response || !response.ok) {
+      throw (
+        lastError ||
+        new ResumeAnalysisError("The AI service could not analyze this resume.", 502)
       );
     }
 

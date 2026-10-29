@@ -15,7 +15,7 @@ import { withServerDb } from "@/lib/firebase/serverDb";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
 
 const mentorRecommendationSchema = z.object({
   recommendations: z.array(

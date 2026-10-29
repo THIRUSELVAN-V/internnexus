@@ -66,21 +66,32 @@ Resume Text:
 ${text.slice(0, 4000)}
 """`;
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json' },
-    }),
-  });
+  const models = ['gemini-2.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  let lastError: Error | null = null;
+  let rawResponse: string | undefined;
 
-  if (!res.ok) {
-    throw new Error(`Gemini API returned status ${res.status}`);
+  for (const model of models) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json' },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawResponse) break;
+      } else {
+        lastError = new Error(`Gemini model ${model} returned status ${res.status}`);
+      }
+    } catch (err) {
+      lastError = err as Error;
+    }
   }
-
-  const data = await res.json();
-  const rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
   if (!rawResponse) {
     throw new Error('Empty response from Gemini API');
