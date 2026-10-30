@@ -13,8 +13,8 @@ export async function analyzeProjectAndGenerateRoadmap(
   projectDescription: string,
   mentees: MenteeInfo[] = []
 ): Promise<ProjectTaskRoadmap[]> {
-  // Input Validation
   const cleanTitle = (projectTitle || '').trim();
+  const cleanDomain = (domain || '').trim();
   const cleanDesc = (projectDescription || '').trim();
 
   if (!cleanDesc) {
@@ -25,248 +25,157 @@ export async function analyzeProjectAndGenerateRoadmap(
     throw new Error('Project description is too short. Please provide a more descriptive summary of project features and requirements.');
   }
 
-  // Simulate latency
-  await new Promise((res) => setTimeout(res, 1400));
+  // First attempt: call server AI endpoint with Gemini
+  try {
+    const response = await fetch('/api/ai/generate-project-roadmap', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        projectTitle: cleanTitle,
+        domain: cleanDomain,
+        projectDescription: cleanDesc,
+        mentees,
+      }),
+    });
 
-  const textLower = cleanDesc.toLowerCase();
-  const titleLower = cleanTitle.toLowerCase();
+    if (response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data.roadmap) && data.roadmap.length > 0) {
+        return data.roadmap;
+      }
+    } else {
+      console.warn(`Roadmap API returned HTTP ${response.status}`);
+    }
+  } catch (apiErr) {
+    console.warn('Roadmap API call failed, falling back to local intelligent generator:', apiErr);
+  }
 
-  // Dynamic requirement breakdown based on project text
-  const extractedRequirements: {
-    title: string;
-    description: string;
-    instructions: string;
-    estimatedHours: number;
-    resources: string[];
-    tags: string[];
-    priority: 'HIGH' | 'MEDIUM' | 'LOW';
-    dependencies: string[];
-  }[] = [];
+  // Local intelligent fallback: Generate dynamic tasks matching this specific project
+  return generateLocalDynamicRoadmap(cleanTitle, cleanDomain, cleanDesc, mentees);
+}
 
-  // Keyword-driven intelligent requirement decomposition
-  const hasAuthOrUsers = textLower.includes('student') || textLower.includes('user') || textLower.includes('login') || textLower.includes('profile') || textLower.includes('auth') || textLower.includes('registration');
-  const hasResume = textLower.includes('resume') || textLower.includes('cv') || textLower.includes('upload');
-  const hasInternship = textLower.includes('internship') || textLower.includes('job') || textLower.includes('posting') || textLower.includes('listing') || textLower.includes('apply') || textLower.includes('application');
-  const hasCompany = textLower.includes('company') || textLower.includes('hr') || textLower.includes('employer');
-  const hasMentor = textLower.includes('mentor') || textLower.includes('assign') || textLower.includes('guidance');
-  const hasTaskOrSubmission = textLower.includes('task') || textLower.includes('submission') || textLower.includes('review') || textLower.includes('feedback');
-  const hasAnalyticsOrCert = textLower.includes('progress') || textLower.includes('certificate') || textLower.includes('report') || textLower.includes('analytics');
+function generateLocalDynamicRoadmap(
+  title: string,
+  domain: string,
+  description: string,
+  mentees: MenteeInfo[] = []
+): ProjectTaskRoadmap[] {
+  const cleanTitle = title || 'Engineering Project';
+  const sentences = description
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 15);
 
-  // E-Commerce / Store keywords
-  const hasCartOrOrder = textLower.includes('cart') || textLower.includes('checkout') || textLower.includes('order') || textLower.includes('payment') || textLower.includes('ecommerce');
+  const keyConcepts = extractTechTerms(description);
+  const techStack = keyConcepts.length > 0 ? keyConcepts.slice(0, 4).join(', ') : domain || 'Full Stack';
 
-  // AI / ML keywords
-  const hasAIorML = textLower.includes('ai') || textLower.includes('machine learning') || textLower.includes('model') || textLower.includes('dataset') || textLower.includes('prediction');
+  const availableMentees =
+    mentees.length > 0
+      ? mentees
+      : [
+          { id: 'std-1', name: 'Alex Rivera', skills: ['React', 'TypeScript', 'Tailwind', 'UI/UX'] },
+          { id: 'std-2', name: 'Rohan Verma', skills: ['Python', 'FastAPI', 'Node.js', 'PostgreSQL', 'Docker'] },
+        ];
 
-  // Task 1: Authentication & User Profiles
-  if (hasAuthOrUsers || (!hasCartOrOrder && !hasAIorML)) {
-    extractedRequirements.push({
-      title: `Student Registration & Profile Management`,
-      description: `Build user authentication and comprehensive profile management views for students and mentors in ${cleanTitle}.`,
-      instructions: `1. Design registration form with validation for email, university, GPA, and skills.\n2. Implement user profile page with editable fields.\n3. Integrate authentication logic and session storage.`,
-      estimatedHours: 16,
-      resources: ['Authentication Flow Specs', 'Form Validation & UI Guidelines'],
-      tags: ['Frontend', 'Authentication', 'UI/UX', 'Profiles'],
-      priority: 'HIGH',
+  const milestones = [
+    {
+      stepIndex: 1,
+      title: `Phase 1: Architecture Blueprint & Environment Setup for ${cleanTitle}`,
+      description: `Establish project structure, configure development environment, and model data schemas for ${cleanTitle}. Context: ${sentences[0] || description.slice(0, 120)}`,
+      instructions: `1. Initialize git repository with modular directory layout and linting standards.\n2. Configure local environment variables and install core packages (${techStack}).\n3. Design database schemas and data models for project entities.\n4. Verify baseline compilation and document setup steps in README.`,
+      estimatedHours: 20,
+      resources: ['Architecture Blueprint Guidelines', `${domain} Setup Reference`],
+      tags: ['Architecture', 'Setup', domain || 'Engineering'],
+      priority: 'HIGH' as const,
       dependencies: [],
-    });
-  }
-
-  // Task 2: Resume / Document Management
-  if (hasResume) {
-    extractedRequirements.push({
-      title: `Resume Upload & Parser Module`,
-      description: `Construct secure resume upload pipeline with PDF viewer and structured skill extraction for candidate applications.`,
-      instructions: `1. Implement drag-and-drop file uploader accepting PDF/DOCX formats.\n2. Add file validation (max 5MB, mime-type check).\n3. Store files securely and extract parsed skills into student profile state.`,
-      estimatedHours: 18,
-      resources: ['File Upload Security Guide', 'PDF Parser Reference'],
-      tags: ['Backend', 'Storage', 'File Upload', 'Parser'],
-      priority: 'HIGH',
-      dependencies: ['Student Registration & Profile Management'],
-    });
-  }
-
-  // Task 3: Internship Listings & Search
-  if (hasInternship) {
-    extractedRequirements.push({
-      title: `Internship Opportunity Directory & Advanced Filtering`,
-      description: `Develop search and multi-criteria filtering interface for students to browse active internship openings.`,
-      instructions: `1. Build responsive internship card list grid with pagination.\n2. Implement search input and domain/location/mode filters.\n3. Create detailed internship modal view with requirements and apply button.`,
+    },
+    {
+      stepIndex: 2,
+      title: `Phase 2: Core Domain Logic & Backend API Services`,
+      description: `Develop primary backend endpoints, business logic algorithms, and data access controllers matching: ${sentences[1] || 'Implement core controllers and services.'}`,
+      instructions: `1. Build modular API routes handling primary data operations.\n2. Implement request validation schemas and error handling middleware.\n3. Integrate database operations with transaction integrity.\n4. Write unit tests for core service methods.`,
+      estimatedHours: 25,
+      resources: ['API Design Patterns', 'Database Query Optimization'],
+      tags: ['Backend', 'API', 'Business Logic'],
+      priority: 'HIGH' as const,
+      dependencies: [`Phase 1: Architecture Blueprint & Environment Setup for ${cleanTitle}`],
+    },
+    {
+      stepIndex: 3,
+      title: `Phase 3: User Interface & Component Architecture`,
+      description: `Build responsive client interface and interactive components matching requirements: ${sentences[2] || 'Design intuitive user views and state management.'}`,
+      instructions: `1. Scaffold UI component hierarchy with clean state management.\n2. Connect frontend views to backend API endpoints with async loading and error states.\n3. Implement data visualization, filtering, and responsive mobile/desktop layouts.\n4. Conduct accessibility audits and refine interactive feedback.`,
+      estimatedHours: 25,
+      resources: ['UI Component Guidelines', 'State Management Reference'],
+      tags: ['Frontend', 'UI/UX', 'Components'],
+      priority: 'HIGH' as const,
+      dependencies: [`Phase 2: Core Domain Logic & Backend API Services`],
+    },
+    {
+      stepIndex: 4,
+      title: `Phase 4: Advanced Features, Integrations & Real-Time Sync`,
+      description: `Implement advanced project specifications, third-party integrations, and end-to-end data synchronization for ${cleanTitle}. ${sentences[3] || ''}`,
+      instructions: `1. Implement specialized business logic and third-party service connections.\n2. Optimize query performance and implement caching layers where appropriate.\n3. Conduct end-to-end user journey tests across all integrated modules.\n4. Perform security checks, input sanitization, and access permission validation.`,
+      estimatedHours: 30,
+      resources: ['Integration Documentation', 'Performance Profiling Reference'],
+      tags: ['Integration', 'Advanced', 'Security'],
+      priority: 'MEDIUM' as const,
+      dependencies: [`Phase 3: User Interface & Component Architecture`],
+    },
+    {
+      stepIndex: 5,
+      title: `Phase 5: Performance Optimization, Quality Assurance & Deployment`,
+      description: `Conduct end-to-end testing, audit performance benchmarks, and prepare deployment pipeline for final project deliverable.`,
+      instructions: `1. Run full automated integration test suite and fix edge-case anomalies.\n2. Audit build sizes, load times, and resource consumption.\n3. Prepare deployment configurations and configure continuous integration.\n4. Assemble technical documentation and project walkthrough demo.`,
       estimatedHours: 20,
-      resources: ['Search & Filter Component Standards', 'API Query Optimization'],
-      tags: ['Frontend', 'Search', 'Filter', 'UI Grid'],
-      priority: 'HIGH',
-      dependencies: ['Student Registration & Profile Management'],
-    });
-  }
+      resources: ['Production Deployment Checklist', 'Final Evaluation Guidelines'],
+      tags: ['QA', 'DevOps', 'Deployment'],
+      priority: 'HIGH' as const,
+      dependencies: [`Phase 4: Advanced Features, Integrations & Real-Time Sync`],
+    },
+  ];
 
-  // Task 4: Company & HR Portal
-  if (hasCompany) {
-    extractedRequirements.push({
-      title: `Company Dashboard & Internship Posting Management`,
-      description: `Create employer interface for companies and HR personnel to post new internships and review applicants.`,
-      instructions: `1. Design internship creation form with skills, stipend, openings, and deadline fields.\n2. Build applicant management dashboard displaying applicant status.\n3. Add applicant shortlisting and status update triggers.`,
-      estimatedHours: 22,
-      resources: ['HR Workflow Specs', 'Applicant Tracking System (ATS) Patterns'],
-      tags: ['Full Stack', 'HR Portal', 'ATS', 'Forms'],
-      priority: 'HIGH',
-      dependencies: ['Internship Opportunity Directory & Advanced Filtering'],
-    });
-  }
-
-  // Task 5: Mentor Assignment & Matching
-  if (hasMentor) {
-    extractedRequirements.push({
-      title: `Industrial Mentor Recommendation & Student Assignment`,
-      description: `Implement mentor-student matching logic based on domain expertise, current mentor workload, and company assignment.`,
-      instructions: `1. Build mentor recommendation scoring function comparing mentor skills to internship domains.\n2. Implement HR mentor assignment UI with manual override capability.\n3. Send automated assignment notifications upon confirmation.`,
-      estimatedHours: 20,
-      resources: ['Mentor Matching Algorithm Guide', 'Notification System Docs'],
-      tags: ['Backend', 'Matching Algorithm', 'Mentor Portal'],
-      priority: 'MEDIUM',
-      dependencies: ['Company Dashboard & Internship Posting Management'],
-    });
-  }
-
-  // Task 6: Task Tracking & Submissions
-  if (hasTaskOrSubmission) {
-    extractedRequirements.push({
-      title: `Mentor Task Assignment & Student Deliverable Submission`,
-      description: `Develop task delivery system where mentors assign milestone tasks and students upload code/project deliverables.`,
-      instructions: `1. Create task generation interface for mentors to specify instructions and due dates.\n2. Build student submission page with GitHub URL input and deliverable upload.\n3. Implement mentor review panel with grade rating and feedback controls.`,
-      estimatedHours: 24,
-      resources: ['Task Workflow Checklist', 'Submission Feedback Guidelines'],
-      tags: ['Full Stack', 'Task Management', 'Submissions', 'Feedback'],
-      priority: 'HIGH',
-      dependencies: ['Industrial Mentor Recommendation & Student Assignment'],
-    });
-  }
-
-  // Task 7: Progress Analytics & Certification
-  if (hasAnalyticsOrCert) {
-    extractedRequirements.push({
-      title: `Student Internship Progress Tracker & Certificate Generation`,
-      description: `Implement milestone completion progress bar, final evaluation portal, and automated certificate generation.`,
-      instructions: `1. Calculate real-time completion percentage based on approved tasks.\n2. Build final mentor evaluation questionnaire.\n3. Generate downloadable digital internship completion certificate upon 100% approval.`,
-      estimatedHours: 18,
-      resources: ['Certificate Generation Library', 'Analytics Dashboard Specs'],
-      tags: ['Analytics', 'Progress', 'Certificates', 'Reporting'],
-      priority: 'MEDIUM',
-      dependencies: ['Mentor Task Assignment & Student Deliverable Submission'],
-    });
-  }
-
-  // Special E-Commerce fallback if project description is e-commerce related
-  if (hasCartOrOrder && extractedRequirements.length < 3) {
-    extractedRequirements.push(
-      {
-        title: `Product Catalog & Search Engine`,
-        description: `Implement searchable product catalog with categorization, dynamic pricing, and inventory tracking for ${cleanTitle}.`,
-        instructions: `1. Create responsive product grid with filter controls.\n2. Implement inventory query API.\n3. Add real-time stock availability indicators.`,
-        estimatedHours: 20,
-        resources: ['Catalog Specs', 'State Management Guide'],
-        tags: ['Frontend', 'E-Commerce', 'Catalog'],
-        priority: 'HIGH',
-        dependencies: [],
-      },
-      {
-        title: `Shopping Cart & Secure Checkout Pipeline`,
-        description: `Construct client-side cart management and payment processing integration.`,
-        instructions: `1. Build interactive cart drawer with quantity modifiers.\n2. Integrate Stripe/PayPal checkout flow.\n3. Add order confirmation email trigger.`,
-        estimatedHours: 24,
-        resources: ['Stripe Integration Docs', 'Cart Persistence Guide'],
-        tags: ['Full Stack', 'Payments', 'Checkout'],
-        priority: 'HIGH',
-        dependencies: ['Product Catalog & Search Engine'],
-      }
-    );
-  }
-
-  // Fallback for general custom software if fewer than 3 requirement tasks were extracted
-  if (extractedRequirements.length < 3) {
-    extractedRequirements.push(
-      {
-        title: `${cleanTitle}: Core Feature Module Setup`,
-        description: `Implement primary domain features and business logic based on specification: "${cleanDesc.slice(0, 80)}..."`,
-        instructions: `1. Review feature requirements and outline component hierarchy.\n2. Build API service controllers.\n3. Integrate views with state management.`,
-        estimatedHours: 22,
-        resources: ['Feature Specification Guide', 'API Design Patterns'],
-        tags: [domain || 'Software Development', 'Feature Module'],
-        priority: 'HIGH',
-        dependencies: [],
-      },
-      {
-        title: `${cleanTitle}: Data Processing & API Integration`,
-        description: `Construct API endpoints and database operations matching project specifications.`,
-        instructions: `1. Define data models and validation schemas.\n2. Build API endpoints with error handling.\n3. Write unit tests for core methods.`,
-        estimatedHours: 25,
-        resources: ['API Endpoint Reference'],
-        tags: ['API', 'Backend', 'Data Processing'],
-        priority: 'HIGH',
-        dependencies: [`${cleanTitle}: Core Feature Module Setup`],
-      }
-    );
-  }
-
-  // Skill-Aware Mentee Matching Helper
-  const availableMentees = mentees.length > 0
-    ? mentees
-    : [
-        { id: 'std-1', name: 'Alex Rivera', skills: ['React', 'JavaScript', 'TypeScript', 'Tailwind', 'HTML', 'CSS'] },
-        { id: 'std-2', name: 'Priya Sharma', skills: ['Node.js', 'Express', 'Firebase', 'REST APIs', 'SQL'] },
-        { id: 'std-3', name: 'Rohan Verma', skills: ['Backend', 'Python', 'System Architecture', 'Database', 'Docker'] },
-        { id: 'std-4', name: 'Ananya Iyer', skills: ['UI/UX', 'Figma', 'Frontend', 'Analytics', 'React'] },
-      ];
-
-  const finalRoadmap: ProjectTaskRoadmap[] = extractedRequirements.map((req, idx) => {
-    const stepIndex = idx + 1;
-
-    // Determine best mentee match based on skills & task tags
+  return milestones.map((m, idx) => {
     let bestMentee = availableMentees[idx % availableMentees.length];
-    let highestScore = -1;
-    let matchReasoning = `Recommended based on general domain alignment.`;
+    let matchReasoning = 'Assigned to team mentee.';
 
     for (const mentee of availableMentees) {
-      const menteeSkills = (mentee.skills || []).map((s) => s.toLowerCase());
-      let score = 0;
-      const matchedSkillsList: string[] = [];
-
-      req.tags.forEach((tag) => {
-        const tagLower = tag.toLowerCase();
-        menteeSkills.forEach((skill) => {
-          if (skill.includes(tagLower) || tagLower.includes(skill)) {
-            score += 2;
-            if (!matchedSkillsList.includes(skill)) matchedSkillsList.push(skill);
-          }
-        });
-      });
-
-      if (score > highestScore) {
-        highestScore = score;
+      const skillsLower = (mentee.skills || []).map((s) => s.toLowerCase());
+      const hasMatch = m.tags.some((tag) =>
+        skillsLower.some((s) => s.includes(tag.toLowerCase()) || tag.toLowerCase().includes(s))
+      );
+      if (hasMatch) {
         bestMentee = mentee;
-        if (matchedSkillsList.length > 0) {
-          matchReasoning = `Matches mentee's skills in ${matchedSkillsList.slice(0, 3).join(', ')}.`;
-        } else {
-          matchReasoning = `Recommended for ${req.priority.toLowerCase()} priority ${req.tags[0] || 'development'} task based on mentee workload.`;
-        }
+        matchReasoning = `Matched based on expertise in ${(mentee.skills || []).slice(0, 3).join(', ')}.`;
+        break;
       }
     }
 
     return {
-      stepIndex,
-      title: req.title,
-      description: req.description,
-      instructions: req.instructions,
-      estimatedHours: req.estimatedHours,
-      resources: req.resources,
-      tags: req.tags,
-      priority: req.priority,
+      ...m,
       suggestedMenteeId: bestMentee.id,
       suggestedMenteeName: bestMentee.name,
       matchReasoning,
-      dependencies: req.dependencies,
     };
   });
+}
 
-  return finalRoadmap;
+function extractTechTerms(text: string): string[] {
+  const dictionary = [
+    'React', 'Next.js', 'Vue', 'Angular', 'Node.js', 'Express', 'Python', 'FastAPI',
+    'Django', 'Flask', 'PyTorch', 'TensorFlow', 'PostgreSQL', 'MongoDB', 'Firebase',
+    'Redis', 'Docker', 'Kubernetes', 'GraphQL', 'REST', 'WebSockets', 'Tailwind',
+    'TypeScript', 'JavaScript', 'AWS', 'GCP', 'Azure', 'Microservices', 'OpenCV'
+  ];
+
+  const found: string[] = [];
+  const lower = text.toLowerCase();
+  for (const term of dictionary) {
+    if (lower.includes(term.toLowerCase())) {
+      found.push(term);
+    }
+  }
+  return found;
 }
