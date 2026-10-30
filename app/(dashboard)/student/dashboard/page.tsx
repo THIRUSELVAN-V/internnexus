@@ -254,12 +254,12 @@ export default function StudentDashboardPage() {
                       <div key={app.id} className="py-3.5 flex items-center justify-between gap-3 first:pt-0 last:pb-0">
                         <div className="flex items-center gap-3">
                           <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center font-bold text-blue-600 text-xs border border-blue-100">
-                            {app.companyName.slice(0, 2).toUpperCase()}
+                            {(app.companyName ?? 'NA').slice(0, 2).toUpperCase()}
                           </div>
                           <div>
                             <h4 className="text-sm font-bold text-slate-900">{app.internshipTitle}</h4>
                             <p className="text-xs text-slate-500">
-                              {app.companyName} · Applied {formatTimestamp(app.appliedAt).slice(0, 10) || 'Recently'}
+                              {app.companyName ?? 'Unknown'} · Applied {formatTimestamp(app.appliedAt).slice(0, 10) || 'Recently'}
                             </p>
                           </div>
                         </div>
